@@ -58,7 +58,7 @@ export async function POST(req: Request) {
 
             if (expError) throw expError;
 
-            const candidateIds = Array.from(new Set(expMatches?.map(e => e.candidate_id) || []));
+            const candidateIds = Array.from(new Set((expMatches as any)?.map((e: any) => e.candidate_id) || []));
 
             if (candidateIds.length === 0) {
                 return NextResponse.json({ data: [], total: 0, page, pageSize });
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
 
         // --- HYDRATE EXPERIENCES ---
         // Fetch experiences ONLY for the displayed page of candidates
-        const pageCandidateIds = profiles?.map(p => p.candidate_id) || [];
+        const pageCandidateIds = (profiles as any)?.map((p: any) => p.candidate_id) || [];
 
         let fullExpQuery = adminAuthClient
             .from('candidate_experiences')
@@ -92,14 +92,17 @@ export async function POST(req: Request) {
 
         const { data: fullExp, error: fullExpError } = await fullExpQuery;
         if (fullExpError) throw fullExpError;
-
-        const results = profiles?.map(p => ({
+        // Merge Profile Data
+        const finalResults = (profiles as any).map((p: any) => ({
             ...p,
-            experiences: fullExp?.filter(e => e.candidate_id === p.candidate_id) || []
+            candidate_id: p.candidate_id, // Ensure explicit mapping
+            match_score: 0, // Simplified for now
+            skills_match: [],
+            experiences: (fullExp as any)?.filter((e: any) => e.candidate_id === p.candidate_id) || []
         }));
 
         return NextResponse.json({
-            data: results,
+            data: finalResults,
             total: count
         });
 

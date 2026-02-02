@@ -7,23 +7,130 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import {
+    Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronsUpDown, Plus, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CreateJobRequisitionFormProps {
     onCancel: () => void;
     onSuccess: (newJR: any) => void;
 }
 
+interface ComboboxProps {
+    value: string;
+    onChange: (value: string) => void;
+    options: string[];
+    placeholder?: string;
+    allowCustom?: boolean;
+}
+
+function CreatableCombobox({ value, onChange, options, placeholder, allowCustom = true }: ComboboxProps) {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState("");
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal">
+                    {value || placeholder || "Select..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command filter={(value, search) => {
+                    if (value.toLowerCase().includes(search.toLowerCase())) return 1;
+                    return 0;
+                }}>
+                    <CommandInput placeholder="Search or type..." onValueChange={setQuery} />
+                    <CommandList>
+                        <CommandEmpty>
+                            {allowCustom && query.length > 0 ? (
+                                <div
+                                    className="flex items-center gap-2 p-2 text-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded-sm"
+                                    onClick={() => {
+                                        onChange(query);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Plus className="h-4 w-4" /> Create "{query}"
+                                </div>
+                            ) : "No results found."}
+                        </CommandEmpty>
+                        <CommandGroup>
+                            {options.map((option) => (
+                                <CommandItem
+                                    key={option}
+                                    value={option}
+                                    onSelect={(currentValue) => {
+                                        onChange(currentValue === value ? "" : currentValue);
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Check className={cn("mr-2 h-4 w-4", value === option ? "opacity-100" : "opacity-0")} />
+                                    {option}
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 export function CreateJobRequisitionForm({ onCancel, onSuccess }: CreateJobRequisitionFormProps) {
     const [isLoading, setIsLoading] = useState(false);
+
+    // Dynamic Options State
+    const [options, setOptions] = useState<{
+        positions: string[];
+        divisions: string[];
+        subDivisions: string[];
+        originalJrs: string[];
+    }>({
+        positions: [],
+        divisions: [],
+        subDivisions: [],
+        originalJrs: []
+    });
+
     const [formData, setFormData] = useState({
-        position: "",
-        department: "",
-        division: "",
-        hiring_manager_name: "",
-        headcount: 1,
-        location: "Bangkok",
-        description: ""
+        position_jr: "",
+        bu: "",
+        sub_bu: "",
+        request_date: new Date().toISOString().split('T')[0], // Default to today YYYY-MM-DD
+        jr_type: "New",
+        original_jr_id: "",
+        job_description: "",
+        feedback_file: "",
+        create_by: "Admin" // Simple default as per current context
+    });
+
+    // Load Distinct Values on Mount
+    useState(() => {
+        async function loadOptions() {
+            try {
+                const { getDistinctFieldValues } = await import("@/app/actions/requisitions");
+                const [pos, bus, subs, jrs] = await Promise.all([
+                    getDistinctFieldValues('position_jr'),
+                    getDistinctFieldValues('bu'),
+                    getDistinctFieldValues('sub_bu'),
+                    getDistinctFieldValues('jr_id')
+                ]);
+                setOptions({
+                    positions: pos,
+                    divisions: bus,
+                    subDivisions: subs,
+                    originalJrs: jrs
+                });
+            } catch (e) {
+                console.error("Failed to load options", e);
+            }
+        }
+        loadOptions();
     });
 
     const handleChange = (key: string, value: any) => {
@@ -35,7 +142,6 @@ export function CreateJobRequisitionForm({ onCancel, onSuccess }: CreateJobRequi
         setIsLoading(true);
 
         try {
-            // Import action dynamically
             const { createJobRequisition } = await import("@/app/actions/requisitions");
             const newJR = await createJobRequisition(formData);
             if (newJR) {
@@ -51,108 +157,124 @@ export function CreateJobRequisitionForm({ onCancel, onSuccess }: CreateJobRequi
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                {/* Position Title: Combobox (Customizable) */}
                 <div className="space-y-2">
-                    <Label htmlFor="position">Position Title <span className="text-red-500">*</span></Label>
-                    <Select onValueChange={(v) => handleChange("position", v)} defaultValue={formData.position}>
+                    <Label htmlFor="position_jr">Position (JR) <span className="text-red-500">*</span></Label>
+                    <CreatableCombobox
+                        value={formData.position_jr}
+                        onChange={(v) => handleChange("position_jr", v)}
+                        options={options.positions}
+                        placeholder="Select or Type Position"
+                    />
+                </div>
+
+                {/* BU: Combobox */}
+                <div className="space-y-2">
+                    <Label htmlFor="bu">BU</Label>
+                    <CreatableCombobox
+                        value={formData.bu}
+                        onChange={(v) => handleChange("bu", v)}
+                        options={options.divisions}
+                        placeholder="Select or Type BU"
+                    />
+                </div>
+
+                {/* Sub BU: Combobox */}
+                <div className="space-y-2">
+                    <Label htmlFor="sub_bu">Sub BU</Label>
+                    <CreatableCombobox
+                        value={formData.sub_bu}
+                        onChange={(v) => handleChange("sub_bu", v)}
+                        options={options.subDivisions}
+                        placeholder="Select or Type Sub BU"
+                    />
+                </div>
+
+                {/* Request Date */}
+                <div className="space-y-2">
+                    <Label htmlFor="request_date">Request Date <span className="text-red-500">*</span></Label>
+                    <Input
+                        type="date"
+                        value={formData.request_date}
+                        onChange={(e) => handleChange("request_date", e.target.value)}
+                    />
+                </div>
+
+                {/* JR Type: New / Replacement */}
+                <div className="space-y-2">
+                    <Label>JR Type</Label>
+                    <div className="flex gap-4 mt-2">
+                        <Button
+                            type="button"
+                            variant={formData.jr_type === 'New' ? 'default' : 'outline'}
+                            onClick={() => handleChange('jr_type', 'New')}
+                            className="flex-1"
+                        >
+                            New
+                        </Button>
+                        <Button
+                            type="button"
+                            variant={formData.jr_type === 'Replacement' ? 'default' : 'outline'}
+                            onClick={() => handleChange('jr_type', 'Replacement')}
+                            className="flex-1"
+                        >
+                            Replacement
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Original JR (Only if Replacement) */}
+                {formData.jr_type === 'Replacement' && (
+                    <div className="space-y-2">
+                        <Label htmlFor="original_jr_id">Original JR ID</Label>
+                        <Select onValueChange={(v) => handleChange("original_jr_id", v)} value={formData.original_jr_id}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select Original JR" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {options.originalJrs.map((jr) => (
+                                    <SelectItem key={jr} value={jr}>{jr}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
+
+                {/* Create By */}
+                <div className="space-y-2">
+                    <Label htmlFor="create_by">Create By <span className="text-red-500">*</span></Label>
+                    <Select onValueChange={(v) => handleChange("create_by", v)} defaultValue={formData.create_by}>
                         <SelectTrigger>
-                            <SelectValue placeholder="Select Position" />
+                            <SelectValue placeholder="Select Creator" />
                         </SelectTrigger>
                         <SelectContent>
-                            {/* Dummy Data */}
-                            <SelectItem value="Senior Software Engineer">Senior Software Engineer</SelectItem>
-                            <SelectItem value="Product Manager">Product Manager</SelectItem>
-                            <SelectItem value="UX Designer">UX Designer</SelectItem>
-                            <SelectItem value="Data Scientist">Data Scientist</SelectItem>
-                            <SelectItem value="HR Specialist">HR Specialist</SelectItem>
+                            <SelectItem value="Admin">Admin</SelectItem>
+                            <SelectItem value="HR Manager">HR Manager</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
 
+                {/* Feedback File (PDF Link) */}
                 <div className="space-y-2">
-                    <Label htmlFor="division">Division (BU)</Label>
-                    <Select onValueChange={(v) => handleChange("division", v)} defaultValue={formData.division}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Business Unit" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="Corporate">Corporate</SelectItem>
-                            <SelectItem value="Technology">Technology</SelectItem>
-                            <SelectItem value="Sales">Sales</SelectItem>
-                            <SelectItem value="Operations">Operations</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="space-y-2">
-                    <Label htmlFor="department">Department (Sub-BU)</Label>
-                    <Select onValueChange={(v) => handleChange("department", v)} defaultValue={formData.department}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Department" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="Platform Engineering">Platform Engineering</SelectItem>
-                            <SelectItem value="Mobile Development">Mobile Development</SelectItem>
-                            <SelectItem value="Human Resources">Human Resources</SelectItem>
-                            <SelectItem value="Direct Sales">Direct Sales</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="space-y-2">
-                    <Label htmlFor="hiring_manager">Hiring Manager</Label>
-                    <Select onValueChange={(v) => handleChange("hiring_manager_name", v)} defaultValue={formData.hiring_manager_name}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Manager" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="Somchai Jai-dee">Somchai Jai-dee</SelectItem>
-                            <SelectItem value="Somsri Mee-ngern">Somsri Mee-ngern</SelectItem>
-                            <SelectItem value="John Doe">John Doe</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="space-y-2">
-                    <Label htmlFor="headcount">Target Headcount</Label>
-                    <Select onValueChange={(v) => handleChange("headcount", parseInt(v))} defaultValue={formData.headcount.toString()}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Headcount" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="1">1</SelectItem>
-                            <SelectItem value="2">2</SelectItem>
-                            <SelectItem value="3">3</SelectItem>
-                            <SelectItem value="4">4</SelectItem>
-                            <SelectItem value="5">5</SelectItem>
-                            <SelectItem value="10">10</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="space-y-2">
-                    <Label htmlFor="location">Location</Label>
-                    <Select onValueChange={(v) => handleChange("location", v)} defaultValue={formData.location}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select Location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="Bangkok">Bangkok</SelectItem>
-                            <SelectItem value="Chiang Mai">Chiang Mai</SelectItem>
-                            <SelectItem value="Phuket">Phuket</SelectItem>
-                            <SelectItem value="Remote">Remote</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <Label htmlFor="feedback_file">Feedback File (PDF/Link)</Label>
+                    <Input
+                        placeholder="Paste PDF link here..."
+                        value={formData.feedback_file}
+                        onChange={(e) => handleChange("feedback_file", e.target.value)}
+                    />
                 </div>
             </div>
 
+            {/* Job Description */}
             <div className="space-y-2">
-                <Label htmlFor="description">Job Description (Brief)</Label>
+                <Label htmlFor="job_description">Job Description</Label>
                 <Textarea
-                    id="description"
-                    placeholder="Key responsibilities and requirements..."
-                    className="min-h-[100px]"
-                    value={formData.description}
-                    onChange={(e) => handleChange("description", e.target.value)}
+                    id="job_description"
+                    placeholder="Enter full job description here..."
+                    className="min-h-[150px]"
+                    value={formData.job_description}
+                    onChange={(e) => handleChange("job_description", e.target.value)}
                 />
             </div>
 

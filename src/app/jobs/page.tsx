@@ -90,9 +90,9 @@ export default function JobsPage() {
 
             {/* Main Content: Table */}
             <div className="flex-1 overflow-hidden ring-1 ring-border rounded-xl bg-card shadow-sm flex flex-col">
-                {/* Table Header */}
-                <div className="grid grid-cols-12 gap-4 p-4 border-b bg-secondary/30 text-xs font-bold uppercase text-muted-foreground tracking-wider sticky top-0 backdrop-blur-md z-10">
-                    <div className="col-span-2 flex items-center gap-1 cursor-pointer hover:text-foreground">JR ID <ArrowUpDown className="h-3 w-3" /></div>
+                {/* Table Header: Stronger Contrast */}
+                <div className="grid grid-cols-12 gap-4 p-4 border-b bg-slate-100 dark:bg-slate-900/50 text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider sticky top-0 backdrop-blur-md z-10 shadow-sm">
+                    <div className="col-span-2 flex items-center gap-1 cursor-pointer hover:text-primary transition-colors">JR ID <ArrowUpDown className="h-3 w-3" /></div>
                     <div className="col-span-4">Position</div>
                     <div className="col-span-2">BU / Dept</div>
                     <div className="col-span-2">Created</div>
@@ -101,24 +101,25 @@ export default function JobsPage() {
                 </div>
 
                 {/* Scrollable Rows */}
-                <div className="overflow-y-auto flex-1 p-2 space-y-1">
+                <div className="overflow-y-auto flex-1 p-2 space-y-1 bg-slate-50/50 dark:bg-transparent">
                     {loading ? (
-                        <div className="p-10 text-center text-muted-foreground animate-pulse">Loading 175 Requisitions...</div>
+                        <div className="p-10 text-center text-muted-foreground animate-pulse">Loading Requisitions...</div>
                     ) : filteredJobs.length === 0 ? (
                         <div className="p-10 text-center text-muted-foreground">No jobs found matching "{searchTerm}"</div>
                     ) : (
                         filteredJobs.map((job) => (
-                            <div key={job.jr_id} className="grid grid-cols-12 gap-4 p-3 items-center hover:bg-secondary/50 rounded-lg transition-colors group text-sm border border-transparent hover:border-border">
-                                <div className="col-span-2 font-mono text-xs text-primary font-bold">{job.jr_id}</div>
-                                <div className="col-span-4 font-medium text-foreground truncate" title={job.position_jr}>{job.position_jr || "Untitled"}</div>
-                                <div className="col-span-2 text-muted-foreground text-xs">{job.bu}</div>
+                            <div key={job.jr_id} className="grid grid-cols-12 gap-4 p-3 items-center bg-card hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-all group text-sm border border-transparent hover:border-border hover:shadow-sm">
+                                <div className="col-span-2 font-mono text-xs text-primary font-bold tracking-tight">{job.jr_id}</div>
+                                <div className="col-span-4 font-bold text-foreground truncate text-base" title={job.position_jr}>{job.position_jr || "Untitled"}</div>
+                                <div className="col-span-2 text-muted-foreground text-xs font-medium">{job.bu}</div>
                                 <div className="col-span-2 text-muted-foreground text-xs">{job.request_date}</div>
                                 <div className="col-span-1">
-                                    <Badge variant="outline" className={
-                                        job.is_active?.toLowerCase() === 'active'
-                                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                            : "bg-gray-500/10 text-gray-500 border-gray-500/20"
-                                    }>
+                                    <Badge variant={job.is_active?.toLowerCase() === 'active' ? "default" : "secondary"}
+                                        className={
+                                            job.is_active?.toLowerCase() === 'active'
+                                                ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-none px-2"
+                                                : "bg-slate-100 text-slate-600 hover:bg-slate-200 border-none px-2"
+                                        }>
                                         {job.is_active || 'Unknown'}
                                     </Badge>
                                 </div>
@@ -146,7 +147,7 @@ export default function JobsPage() {
                 </div>
 
                 {/* Footer Stats */}
-                <div className="p-3 border-t bg-secondary/30 text-xs text-muted-foreground flex justify-between">
+                <div className="p-3 border-t bg-slate-50 dark:bg-slate-900/30 text-xs text-muted-foreground flex justify-between font-medium">
                     <span>Showing {filteredJobs.length} of {jobs.length} requisitions</span>
                     <span>Table: public.job_requisitions</span>
                 </div>

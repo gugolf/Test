@@ -62,14 +62,14 @@ export default function NewExperiencePage({ params }: { params: Promise<{ id: st
         const fetchData = async () => {
             // 1. Candidate Name
             const { data: profile } = await supabase.from('Candidate Profile').select('name').eq('candidate_id', id).single();
-            if (profile) setCandidateName(profile.name);
+            if (profile) setCandidateName((profile as any).name);
 
             // 2. Companies (company_master)
             const { data: compData } = await supabase.from('company_master').select('company_master, industry, group').order('company_master');
             if (compData) {
                 // De-duplicate by company_name (company_master)
                 const uniqueMap = new Map();
-                compData.forEach(c => {
+                (compData as any).forEach((c: any) => {
                     const name = c.company_master;
                     if (name && !uniqueMap.has(name)) {
                         uniqueMap.set(name, {
@@ -85,17 +85,17 @@ export default function NewExperiencePage({ params }: { params: Promise<{ id: st
             // 3. Positions
             const { data: posData } = await supabase.from('candidate_experiences').select('position').not('position', 'is', null).limit(2000);
             if (posData) {
-                const unique = Array.from(new Set(posData.map(p => p.position).filter(Boolean)));
-                setPositions(unique.sort());
+                const unique = Array.from(new Set((posData as any).map((p: any) => p.position).filter(Boolean)));
+                setPositions(unique.sort() as string[]);
             }
 
             // 4. Countries
             const { data: cData } = await supabase.from('country').select('country').order('country');
-            if (cData) setCountries(cData.map(c => c.country).filter(Boolean));
+            if (cData) setCountries((cData as any).map((c: any) => c.country).filter(Boolean));
 
             // 5. Industry Groups
             const { data: indData } = await supabase.from('industry_group').select('industry, group').order('industry');
-            if (indData) setIndustryGroups(indData);
+            if (indData) setIndustryGroups(indData as any);
         };
         fetchData();
     }, [id]);
@@ -160,7 +160,7 @@ export default function NewExperiencePage({ params }: { params: Promise<{ id: st
                         company_master: compName,
                         industry: sourceRow?.company_industry || null,
                         group: sourceRow?.company_group || null
-                    }]);
+                    }] as any);
                     if (createErr) console.error(`Failed to create company ${compName}:`, createErr.message);
                 }
             }
@@ -180,7 +180,7 @@ export default function NewExperiencePage({ params }: { params: Promise<{ id: st
             }));
 
             // 3. Bulk Insert
-            const { error: insertErr } = await supabase.from('candidate_experiences').insert(payloads);
+            const { error: insertErr } = await supabase.from('candidate_experiences').insert(payloads as any);
             if (insertErr) throw insertErr;
 
             alert("All experiences saved successfully!");

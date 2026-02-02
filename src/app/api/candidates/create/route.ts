@@ -51,20 +51,23 @@ export async function POST(req: NextRequest) {
             .from('Candidate Profile')
             .insert([
                 {
-                    candidate_id: newId,
-                    name: name,
-                    email: email || null,
-                    mobile_phone: phone || null,
-                    nationality: nationality || null, // check-db.js confirmed this column exists
-                    // New Fields
-                    gender: body.gender || null,
-                    linkedin: body.linkedin || null,
-                    date_of_birth: body.date_of_birth || null,
-                    year_of_bachelor_education: body.year_of_bachelor_education ? parseInt(body.year_of_bachelor_education) : null,
-                    age: body.age ? parseInt(body.age) : null,
-
-                    created_date: new Date().toISOString(),
-                    modify_date: new Date().toISOString()
+                    "candidate_id": newId,
+                    "Name": name,
+                    "Email": email || null,
+                    "Mobile_phone": phone || null,
+                    "Nationality": nationality || null,
+                    "Gender": body.gender || null,
+                    "Linkedin_URL": body.linkedin || null,
+                    "Date_of_birth": body.date_of_birth || null,
+                    "Bachelor_graduation_year": body.year_of_bachelor_education ? parseInt(body.year_of_bachelor_education) : null,
+                    "Age": body.age ? parseInt(body.age) : null,
+                    "Created_date": new Date().toISOString(),
+                    "Modify_date": new Date().toISOString(),
+                    "enhancement": {
+                        skills: body.skills,
+                        education_summary: body.education,
+                        languages: body.languages
+                    }
                 }
             ]);
 
@@ -73,26 +76,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Failed to create candidate: ' + insertError.message }, { status: 500 });
         }
 
-        // 3. Insert into candidate_profile_enhance (Optional fields)
+        /* 
+        // Optional Fields - keeping commented out as per instruction/redundancy
         if (body.skills || body.education || body.languages || body.linkedin) {
-            const { error: enhanceError } = await supabase
-                .from('candidate_profile_enhance')
-                .insert([
-                    {
-                        candidate_id: newId,
-                        name: name, // Enhance table also has name based on schema check
-                        skills_list: body.skills || null,
-                        education_summary: body.education || null,
-                        languages: body.languages || null,
-                        linkedin_url: body.linkedin || null // Stored in 2 places as requested
-                    }
-                ]);
-
-            if (enhanceError) {
-                console.warn("Error inserting enhance profile:", enhanceError);
-                // We don't fail the whole request if optional enhance fails, but good to log
-            }
-        }
+            // ... implementation if needed
+        } 
+        */
 
         return NextResponse.json({
             success: true,

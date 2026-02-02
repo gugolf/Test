@@ -93,7 +93,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                     logs.sort((a: any, b: any) => {
                         const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
                         const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-                        return tB - tA; // Descending
+                        if (tA !== tB) return tB - tA; // Primary: Timestamp Descending
+
+                        // Tie-breaker: Log ID (highest = latest)
+                        return (parseInt(b.log_id) || 0) - (parseInt(a.log_id) || 0);
                     });
 
                     // Group by jr_candidate_id and take first (latest)

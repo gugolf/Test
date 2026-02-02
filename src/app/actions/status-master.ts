@@ -2,22 +2,15 @@
 
 import { adminAuthClient } from "@/lib/supabase/admin";
 
-export interface StatusMaster {
-    status: string;
-    stage_order: number;
-}
-
-export async function getStatusMaster(): Promise<StatusMaster[]> {
-    const supabase = adminAuthClient;
-    const { data, error } = await supabase
+export async function getStatusMaster() {
+    const { data, error } = await adminAuthClient
         .from('status_master')
-        .select('status, stage_order')
+        .select('*')
         .order('stage_order', { ascending: true });
 
     if (error) {
-        console.error("Error fetching Status Master:", error);
+        console.error("Error fetching status master:", error);
         return [];
     }
-
-    return data;
+    return data || [];
 }

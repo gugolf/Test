@@ -50,12 +50,12 @@ export async function GET() {
             statuses: getUnique(profileData, 'candidate_status'),
 
             // Mapping for dependencies (Country -> Company connection)
-            mapping: expData ? expData.map(e => ({
+            mapping: (expData as any)?.map((e: any) => ({
                 country: e.country,
                 company: e.company,
                 industry: e.company_industry,
                 group: e.company_group
-            })) : []
+            })) || []
         };
 
         return NextResponse.json(response);

@@ -3,21 +3,36 @@
 import React, { useState, useEffect, DragEvent } from "react";
 import { JRCandidate } from "@/types/requisition";
 import { getJRCandidates } from "@/app/actions/jr-candidates";
-import { getStatusMaster, StatusMaster } from "@/app/actions/status-master";
+import { getStatusMaster } from "@/app/actions/status-master";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { updateCandidateStatus } from "@/app/actions/status-updates";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 interface KanbanBoardProps {
     jrId: string;
 }
 
+type StageType = {
+    status: string;
+    stage_order?: number;
+}
+
 export function KanbanBoard({ jrId }: KanbanBoardProps) {
     const [candidates, setCandidates] = useState<JRCandidate[]>([]);
-    const [stages, setStages] = useState<StatusMaster[]>([]);
+    const [stages, setStages] = useState<StageType[]>([]);
     const [loading, setLoading] = useState(true);
+    const [updatingId, setUpdatingId] = useState<string | null>(null);
 
     useEffect(() => {
         async function load() {
@@ -53,14 +68,35 @@ export function KanbanBoard({ jrId }: KanbanBoardProps) {
         const candidateId = e.dataTransfer.getData("candidateId");
 
         if (candidateId) {
-            // Optimistic Update
-            setCandidates((prev) =>
-                prev.map((c) => c.status === newStage ? c : (c.id === candidateId ? { ...c, status: newStage } : c))
-            );
+            const candidate = candidates.find(c => c.id === candidateId);
+            if (candidate && candidate.status === newStage) return;
 
-            // TODO: Call Server Action to persist change to DB
-            console.log(`Moved ${candidateId} to ${newStage}`);
+            setUpdatingId(candidateId);
+
+            // Persistent Update
+            const { success, error } = await updateCandidateStatus(candidateId, newStage);
+
+            if (success) {
+                // Refresh data to ensure logs and everything are in sync
+                const updated = await getJRCandidates(jrId);
+                setCandidates(updated);
+            } else {
+                alert("Failed to move: " + error);
+            }
+            setUpdatingId(null);
         }
+    };
+
+    const handleStatusChange = async (candidateId: string, newStatus: string) => {
+        setUpdatingId(candidateId);
+        const { success, error } = await updateCandidateStatus(candidateId, newStatus);
+        if (success) {
+            const updated = await getJRCandidates(jrId);
+            setCandidates(updated);
+        } else {
+            alert("Update error: " + error);
+        }
+        setUpdatingId(null);
     };
 
     if (loading) return <div className="p-8 text-center text-muted-foreground">Loading board...</div>;
@@ -69,68 +105,104 @@ export function KanbanBoard({ jrId }: KanbanBoardProps) {
         <div className="flex h-[600px] gap-4 overflow-x-auto pb-4">
             {stages.map((stageObj) => {
                 const stage = stageObj.status;
-                // Filter candidates for this stage. 
-                // Note: DB status strings must match status_master strings exactly.
                 const stageCandidates = candidates.filter(c => c.status === stage);
 
-                // Header Color Mapping
-                const headerColor = {
-                    'Pool': 'bg-slate-100 border-slate-200 text-slate-700',
-                    'Screening': 'bg-blue-50 border-blue-200 text-blue-700', // Mapped from 'Phone Screen' if needed, or check status master
-                    'Phone Screen': 'bg-blue-50 border-blue-200 text-blue-700',
-                    'Interview': 'bg-purple-50 border-purple-200 text-purple-700',
-                    'Offer': 'bg-orange-50 border-orange-200 text-orange-700',
-                    'Hired': 'bg-green-50 border-green-200 text-green-700',
-                    'Rejected': 'bg-red-50 border-red-200 text-red-700',
-                }[stage] || 'bg-slate-100 border-slate-200 text-slate-700';
+                // Option: Hide empty columns if allowed
+                if (stageCandidates.length === 0) return null;
+
+                // Header Color Mapping - Increased Contrast & Layering
+                const colorMap: Record<string, string> = {
+                    'Pool': 'bg-slate-100 border-slate-300 text-slate-800 border-t-4 border-t-slate-500',
+                    'Screening': 'bg-blue-100 border-blue-300 text-blue-900 border-t-4 border-t-blue-600',
+                    'Phone Screen': 'bg-blue-100 border-blue-300 text-blue-900 border-t-4 border-t-blue-600',
+                    'Interview': 'bg-purple-100 border-purple-300 text-purple-900 border-t-4 border-t-purple-600',
+                    'Offer': 'bg-orange-100 border-orange-300 text-orange-900 border-t-4 border-t-orange-600',
+                    'Hired': 'bg-green-100 border-green-300 text-green-900 border-t-4 border-t-green-600',
+                    'Rejected': 'bg-red-100 border-red-300 text-red-900 border-t-4 border-t-red-600',
+                };
+                const headerColor = colorMap[stage] || 'bg-slate-100 border-slate-300 text-slate-800 border-t-4 border-t-slate-500';
 
                 return (
                     <div
                         key={stage}
-                        className={`flex-shrink-0 w-72 flex flex-col gap-2 rounded-xl border p-2 ${headerColor}`}
+                        className={`flex-shrink-0 w-72 flex flex-col gap-2 rounded-xl border shadow-sm ${headerColor}`}
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDrop(e, stage)}
                     >
-                        <div className="flex items-center justify-between p-2">
-                            <h3 className="font-semibold text-sm opacity-90">{stage}</h3>
-                            <Badge variant="secondary" className="bg-white/50 text-inherit rounded-full h-5 px-1.5 min-w-[20px] justify-center flex">
+                        <div className="flex items-center justify-between p-3 bg-white/20 rounded-t-lg">
+                            <h3 className="font-bold text-sm tracking-tight">{stage}</h3>
+                            <Badge variant="secondary" className="bg-white/60 text-inherit font-bold shadow-sm backdrop-blur-sm rounded-full h-6 px-2 min-w-[24px] justify-center flex">
                                 {stageCandidates.length}
                             </Badge>
                         </div>
 
-                        <ScrollArea className="flex-1">
-                            <div className="flex flex-col gap-2 p-1">
+                        <ScrollArea className="flex-1 bg-white/40 rounded-b-xl">
+                            <div className="flex flex-col gap-3 p-2">
                                 {stageCandidates.map((c) => (
                                     <div
                                         key={c.id}
                                         draggable
                                         onDragStart={(e) => handleDragStart(e, c.id)}
-                                        className="bg-white p-3 rounded-lg border shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all group"
+                                        className="bg-card p-3 rounded-lg border shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all group hover:border-primary/50"
                                     >
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <Avatar className="h-6 w-6">
+                                        <div className="flex justify-between items-start mb-2 group-hover:translate-x-1 transition-transform">
+                                            <div className="flex items-center gap-2.5">
+                                                <Avatar className="h-10 w-10 border ring-1 ring-background shadow-sm hover:scale-110 transition-transform">
                                                     <AvatarImage src={c.candidate_image_url} />
-                                                    <AvatarFallback className="text-[10px]">{c.candidate_name?.charAt(0)}</AvatarFallback>
+                                                    <AvatarFallback className="text-sm font-black bg-indigo-50 text-primary">{c.candidate_name?.charAt(0)}</AvatarFallback>
                                                 </Avatar>
-                                                <span className="text-sm font-semibold truncate max-w-[120px]">{c.candidate_name}</span>
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-black truncate max-w-[130px] leading-tight group-hover:text-primary transition-colors">{c.candidate_name}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400 truncate max-w-[130px]">{c.candidate_current_position}</span>
+                                                </div>
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 -mr-1">
-                                                <MoreHorizontal className="h-3 w-3" />
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 -mr-1 text-muted-foreground hover:text-foreground">
+                                                <MoreHorizontal className="h-4 w-4" />
                                             </Button>
                                         </div>
-                                        <div className="text-xs text-muted-foreground mb-2">
-                                            {c.candidate_current_position}
+
+                                        <div className="flex flex-col gap-3 mt-3 pt-3 border-t border-dashed border-slate-100">
+                                            <div className="flex justify-between items-center">
+                                                <Badge variant="outline" className="text-[10px] font-black uppercase px-1.5 py-0.5 bg-background text-slate-400 border-slate-200 shadow-sm">
+                                                    {c.list_type || "Longlist"}
+                                                </Badge>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[9px] font-black text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1 uppercase tracking-tighter">
+                                                            Move <ChevronDown className="h-3 w-3" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-[160px] rounded-xl shadow-2xl border-slate-100">
+                                                        <DropdownMenuLabel className="text-[9px] font-black uppercase text-slate-400 tracking-widest px-3 py-2">Quick Move</DropdownMenuLabel>
+                                                        {stages.map(s => (
+                                                            <DropdownMenuItem
+                                                                key={s.status}
+                                                                className={cn(
+                                                                    "py-2 font-bold text-xs cursor-pointer rounded-lg mx-1",
+                                                                    c.status === s.status && "bg-indigo-50 text-indigo-600"
+                                                                )}
+                                                                onClick={() => handleStatusChange(c.id, s.status)}
+                                                            >
+                                                                {s.status}
+                                                            </DropdownMenuItem>
+                                                        ))}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-slate-300">
+                                                    ID: {c.candidate_id}
+                                                </span>
+                                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">
+                                                    {c.created_at ? new Date(c.created_at).toLocaleDateString() : "-"}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between items-center mt-2">
-                                            <Badge variant="outline" className="text-[10px] font-normal px-1 py-0 h-4 bg-slate-50">
-                                                {c.source}
-                                            </Badge>
-                                            <span className="text-[10px] text-slate-400">
-                                                {/* Placeholder for days in stage */}
-                                                2d
-                                            </span>
-                                        </div>
+                                        {updatingId === c.id && (
+                                            <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center rounded-lg animate-in fade-in duration-200">
+                                                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

@@ -72,10 +72,18 @@ export interface Database {
             job_requisitions: {
                 Row: {
                     jr_id: string
-                    position_title: string
-                    department: string | null
-                    status: string // Open, Closed, On Hold
-                    target_hire_date?: string | null
+                    position_jr: string
+                    bu: string | null
+                    sub_bu: string | null
+                    request_date: string | null
+                    closed_date?: string | null
+                    jr_type: string // 'New' | 'Replacement'
+                    original_jr_id?: string | null
+                    is_active: string // 'Active' or other
+                    jr_number: number
+                    job_description?: string | null
+                    feedback_file?: string | null
+                    create_by?: string | null
                     created_at: string
                 }
             }

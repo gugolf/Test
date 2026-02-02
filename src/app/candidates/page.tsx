@@ -118,7 +118,7 @@ export default function CandidatesMenuPage() {
                     // Add other fields as per schema if they exist, or map loosely for now
                     // If strictly mapped, check schema. For now, try common variations or minimal insert
                 }
-            ]);
+            ] as any);
 
             if (error) {
                 // Fallback: Try lowercase keys if Title Case keys fail. 

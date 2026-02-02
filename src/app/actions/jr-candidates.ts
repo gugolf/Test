@@ -58,13 +58,24 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
         .from('jr_candidates')
         .select('*')
         .eq('jr_id', jrId)
-        .order('rank', { ascending: true })
         .returns<DBJRCandidate[]>();
 
     if (error || !candidates) {
         console.error("Error fetching JR Candidates:", error);
         return [];
     }
+
+    // Sort by: Top profile first, then rank
+    candidates.sort((a, b) => {
+        const isTopA = a.list_type === 'Top profile';
+        const isTopB = b.list_type === 'Top profile';
+        if (isTopA && !isTopB) return -1;
+        if (!isTopA && isTopB) return 1;
+
+        const rankA = parseInt(a.rank || "9999");
+        const rankB = parseInt(b.rank || "9999");
+        return rankA - rankB;
+    });
 
     // 2. Fetch Profiles Separately (Application-Side Join)
     const candidateIds = candidates.map(c => c.candidate_id).filter(Boolean);
@@ -73,7 +84,7 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
         .select('candidate_id, name, email, mobile_phone, job_function, photo, age, gender, candidate_projects')
         .in('candidate_id', candidateIds);
 
-    const profileMap = new Map(profiles?.map(p => [p.candidate_id, p]));
+    const profileMap = new Map((profiles as any)?.map((p: any) => [p.candidate_id, p]));
 
     // 3. Fetch Status Logs
     const jrCandIds = candidates.map(c => c.jr_candidate_id);
@@ -85,7 +96,7 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
 
     return candidates.map((row) => {
         // Resolve Profile
-        const profile = profileMap.get(row.candidate_id);
+        const profile = profileMap.get(row.candidate_id) as any;
 
         // Determine status from logs
         const realStatus = getLatestStatus(logs || [], row.jr_candidate_id, row.temp_status || "Pool Candidate");
@@ -123,7 +134,7 @@ export async function getJRAnalytics(jrId: string): Promise<JRAnalytics> {
         supabase.from('jr_candidates').select('jr_candidate_id, temp_status').eq('jr_id', jrId).returns<{ jr_candidate_id: string; temp_status: string }[]>()
     ]);
 
-    const allStatuses: string[] = masters?.map(m => m.status) || ["Pool Candidate", "Phone Screen", "Interview", "Offer", "Hired"];
+    const allStatuses: string[] = (masters as any)?.map((m: any) => m.status) || ["Pool Candidate", "Phone Screen", "Interview", "Offer", "Hired"];
 
     if (!jrCands || jrCands.length === 0) return { countsByStatus: [], agingByStatus: [] };
 
@@ -186,4 +197,101 @@ export async function getJRAnalytics(jrId: string): Promise<JRAnalytics> {
     }));
 
     return { countsByStatus, agingByStatus };
+}
+
+export async function addCandidatesToJR(
+    jrId: string,
+    candidateIds: string[],
+    listType: string = 'Longlist'
+): Promise<{ success: boolean; error?: string }> {
+    const supabase = adminAuthClient;
+
+    try {
+        // 1. Get current max ID for jr_candidate_id (numeric)
+        const { data: maxResult } = await supabase
+            .from('jr_candidates')
+            .select('jr_candidate_id')
+            .order('jr_candidate_id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let nextJrCandId = 1;
+        if (maxResult && (maxResult as any).jr_candidate_id) {
+            nextJrCandId = parseInt((maxResult as any).jr_candidate_id) + 1;
+        }
+
+        // 2. Get current max ID for log_id (numeric)
+        const { data: maxLogResult } = await supabase
+            .from('status_log')
+            .select('log_id')
+            .order('log_id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let nextLogId = 1;
+        if (maxLogResult && (maxLogResult as any).log_id) {
+            nextLogId = parseInt((maxLogResult as any).log_id) + 1;
+        }
+
+        // 3. Prepare Inserts
+        const jrCandidatesInsert = [];
+        const statusLogsInsert = [];
+
+        // Date format: M/D/YYYY
+        const now = new Date();
+        const timestampStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
+
+        for (const candidateId of candidateIds) {
+            const jrCandidateId = nextJrCandId;
+
+            jrCandidatesInsert.push({
+                jr_candidate_id: jrCandidateId,
+                jr_id: jrId,
+                candidate_id: candidateId,
+                temp_status: null, // As per user: "ไม่ต้องใส่ temp_status ก็ได้"
+                list_type: listType,
+                rank: null, // As per user: "Recruiter จะเป็นคนใส่เอง"
+                time_stamp: new Date().toISOString()
+            });
+
+            statusLogsInsert.push({
+                log_id: nextLogId,
+                jr_candidate_id: jrCandidateId,
+                status: 'Pool Candidate',
+                updated_By: 'System',
+                timestamp: timestampStr,
+                note: null
+            });
+
+            nextJrCandId++;
+            nextLogId++;
+        }
+
+        // 4. Batch Insert
+        const { error: candError } = await supabase.from('jr_candidates').insert(jrCandidatesInsert as any);
+        if (candError) throw candError;
+
+        const { error: logError } = await supabase.from('status_log').insert(statusLogsInsert as any);
+        if (logError) throw logError;
+
+        return { success: true };
+    } catch (e: any) {
+        console.error("Error adding candidates to JR:", e);
+        return { success: false, error: e.message };
+    }
+}
+
+export async function getExistingCandidateIdsForJR(jrId: string): Promise<string[]> {
+    const supabase = adminAuthClient;
+    const { data, error } = await supabase
+        .from('jr_candidates')
+        .select('candidate_id')
+        .eq('jr_id', jrId);
+
+    if (error) {
+        console.error("Error fetching existing candidate IDs:", error);
+        return [];
+    }
+
+    return data.map((d: any) => d.candidate_id);
 }

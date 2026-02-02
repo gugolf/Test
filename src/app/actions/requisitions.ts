@@ -102,57 +102,76 @@ export async function getJRStats(): Promise<DashboardStats> {
     };
 }
 
+// Fetch Distinct Values for Dropdowns
+export async function getDistinctFieldValues(field: string): Promise<string[]> {
+    const supabase = adminAuthClient;
+    // Helper to get distinct values from existing records
+    const { data, error } = await supabase
+        .from('job_requisitions')
+        .select(field)
+        .order(field, { ascending: true });
+
+    if (error) {
+        console.error(`Error fetching distinct ${field}:`, error);
+        return [];
+    }
+
+    if (!data) return [];
+
+    // Extract, Filter Nulls/Duplicates
+    const values = data.map((row: any) => row[field]).filter((v: any) => v).map((v: any) => String(v));
+    return [...new Set(values)];
+}
+
 export async function createJobRequisition(data: any): Promise<JobRequisition | null> {
     const supabase = adminAuthClient;
 
     try {
-        // 1. Generate Running ID
-        // Format: JRxxxxxx (e.g., JR000014)
-        const prefix = 'JR';
-
-        // Find max ID with this prefix (using regex or simple ordering since fixed length is ideal, 
-        // but simple ordering works if length is consistent. To be safe, we order desc.)
+        // 1. Generate Running ID using `jr_number` integer column
+        // Find max jr_number
         const { data: maxResult, error: maxError } = await supabase
             .from('job_requisitions')
-            .select('jr_id')
-            .ilike('jr_id', `${prefix}%`)
-            .order('jr_id', { ascending: false })
+            .select('jr_number')
+            .order('jr_number', { ascending: false })
             .limit(1)
             .single();
 
         let nextNum = 1;
         const maxRow = maxResult as any;
-        if (maxRow && maxRow.jr_id) {
-            // Extract number part
-            const currentMax = maxRow.jr_id.replace(/^JR/, '');
-            const parsed = parseInt(currentMax);
-            if (!isNaN(parsed)) {
-                nextNum = parsed + 1;
-            }
+        if (maxRow && maxRow.jr_number) {
+            nextNum = maxRow.jr_number + 1;
         }
 
-        const nextId = `${prefix}${nextNum.toString().padStart(6, '0')}`;
+        // Format: JRxxxxxx (e.g., JR000014)
+        const nextId = `JR${nextNum.toString().padStart(6, '0')}`;
 
         // 2. Insert Data
-        // Mapping form data to DB schema (assuming standard fields)
+        // Mapping form data to DB schema
         const insertPayload = {
-            jr_id: nextId,
-            position_jr: data.position,
-            bu: data.division,
-            sub_bu: data.department,
-            hiring_manager_name: data.hiring_manager_name || "Unknown",
-            headcount: data.headcount,
-            hired_count: 0,
-            location: data.location,
-            request_date: new Date().toISOString(),
+            jr_id: nextId,           // Key
+            jr_number: nextNum,      // Helper for ordering/generation
+
+            // Core Fields
+            position_jr: data.position_jr,
+            bu: data.bu,
+            sub_bu: data.sub_bu,
+            jr_type: data.jr_type,   // 'New' or 'Replacement'
+            original_jr_id: data.original_jr_id || null, // If Replacement
+
+            // Other Fields
+            request_date: data.request_date, // User selected date
+            job_description: data.job_description,
+            feedback_file: data.feedback_file,
+            create_by: data.create_by || "System",
+
+            // Defaults
             is_active: 'Active',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            created_at: new Date().toISOString()
         };
 
         const { data: inserted, error: insertError } = await supabase
             .from('job_requisitions')
-            .insert(insertPayload)
+            .insert(insertPayload as any)
             .select()
             .single();
 
@@ -161,25 +180,25 @@ export async function createJobRequisition(data: any): Promise<JobRequisition | 
             throw insertError;
         }
 
-        const insertedData = inserted as any; // Cast to any to avoid 'never' type inference
+        const insertedData = inserted as any;
 
-        // Return mapped object
+        // Return mapped object for UI
         return {
             id: insertedData.jr_id,
             job_title: insertedData.position_jr,
             title: insertedData.position_jr,
             hiring_manager_id: "",
-            hiring_manager_name: insertedData.hiring_manager_name,
+            hiring_manager_name: insertedData.create_by, // Use create_by as owner context
             department: insertedData.sub_bu,
             division: insertedData.bu,
             status: 'Open',
-            headcount_total: insertedData.headcount,
+            headcount_total: 1, // Default to 1 as per user implication
             headcount_hired: 0,
             opened_date: insertedData.request_date,
             is_active: true,
-            location: insertedData.location,
+            location: "Bangkok",
             created_at: insertedData.created_at,
-            updated_at: insertedData.updated_at
+            updated_at: insertedData.created_at
         };
 
     } catch (e) {

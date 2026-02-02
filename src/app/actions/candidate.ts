@@ -193,3 +193,37 @@ export async function deleteExperience(experienceId: string, candidateId: string
     revalidatePath(`/candidates/${candidateId}`);
     return { success: true };
 }
+
+export async function searchCandidates(query: string) {
+    if (!query) return [];
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return [];
+
+    const client = adminAuthClient as any;
+
+    // Search by Name, Email, or Candidate ID
+    // Table name is 'Candidate Profile' with space
+    const { data, error } = await client
+        .from('Candidate Profile')
+        .select(`
+            candidate_id, 
+            name, 
+            email, 
+            mobile_phone, 
+            job_function, 
+            photo,
+            age,
+            gender,
+            nationality,
+            linkedin_profile
+        `)
+        .or(`name.ilike.%${trimmedQuery}%,email.ilike.%${trimmedQuery}%,candidate_id.ilike.%${trimmedQuery}%`)
+        .limit(20);
+
+    if (error) {
+        console.error("Search Candidate Error:", error);
+        return [];
+    }
+
+    return data;
+}

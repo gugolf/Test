@@ -17,7 +17,7 @@ export async function GET() {
 
         if (jobError) throw jobError;
 
-        const active = jobs?.filter(j => j.is_active?.toLowerCase() === 'active').length || 0;
+        const active = (jobs as any)?.filter((j: any) => j.is_active?.toLowerCase() === 'active').length || 0;
         const inactive = (jobs?.length || 0) - active;
 
         return NextResponse.json({

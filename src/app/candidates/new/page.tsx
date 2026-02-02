@@ -53,7 +53,7 @@ export default function NewCandidatePage() {
     useEffect(() => {
         const fetchNat = async () => {
             const { data } = await supabase.from('nationality').select('nationality').order('nationality');
-            if (data) setNationalities(data.map(n => n.nationality));
+            if (data) setNationalities((data as any).map((n: any) => n.nationality));
         };
         fetchNat();
     }, []);

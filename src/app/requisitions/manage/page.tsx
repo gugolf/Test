@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+export const dynamic = 'force-dynamic';
+
+import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { JRSwitcher } from "@/components/jr-switcher";
 import { JobRequisition } from "@/types/requisition";
@@ -14,9 +16,11 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
 
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { JRTabs } from "@/components/jr-tabs";
 import { CreateJobRequisitionForm } from "@/components/create-jr-form";
+import { AddCandidateDialog } from "@/components/add-candidate-dialog";
+// Actually, let's just use window.location.reload() or re-trigger fetch.
 
 export default function JRManagePage() {
     const router = useRouter();
@@ -30,7 +34,9 @@ export default function JRManagePage() {
     // Selected JR State
     const [selectedJR, setSelectedJR] = useState<JobRequisition | null>(null);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isAddCandOpen, setIsAddCandOpen] = useState(false);
     const [analytics, setAnalytics] = useState<any>(null);
+    const [refreshKey, setRefreshKey] = useState(0); // Trigger refresh for candidates
 
     // Sync URL with Tab
     const handleTabChange = (val: string) => {
@@ -148,10 +154,10 @@ export default function JRManagePage() {
                                 </Button>
                             </DialogTrigger>
                             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                                <div className="text-center mb-6">
-                                    <h2 className="text-2xl font-bold">Create New Requisition</h2>
-                                    <p className="text-muted-foreground">Drafting a new job requisition. ID will be generated automatically.</p>
-                                </div>
+                                <DialogHeader className="mb-6">
+                                    <DialogTitle className="text-2xl font-bold text-center">Create New Requisition</DialogTitle>
+                                    <DialogDescription className="text-center">Drafting a new job requisition. ID will be generated automatically.</DialogDescription>
+                                </DialogHeader>
                                 <CreateJobRequisitionForm
                                     onCancel={() => setIsCreateOpen(false)}
                                     onSuccess={(newJR) => {
@@ -167,7 +173,10 @@ export default function JRManagePage() {
                             <MessageSquare className="mr-2 h-4 w-4" /> View Feedback
                         </Button>
                         {/* Placeholder for Add Candidate */}
-                        <Button disabled={!selectedJR} onClick={() => alert("Add Candidate Feature coming in next sprint (Candidate Form integration)")}>
+                        <Button
+                            disabled={!selectedJR}
+                            onClick={() => setIsAddCandOpen(true)}
+                        >
                             <Plus className="mr-2 h-4 w-4" /> Add Candidate
                         </Button>
                     </div>
@@ -245,11 +254,11 @@ export default function JRManagePage() {
                             </div>
 
                             <TabsContent value="list" className="mt-0">
-                                <CandidateList jrId={selectedJR.id} />
+                                <CandidateList key={`list-${selectedJR.id}-${refreshKey}`} jrId={selectedJR.id} />
                             </TabsContent>
 
                             <TabsContent value="kanban" className="mt-0">
-                                <KanbanBoard jrId={selectedJR.id} />
+                                <KanbanBoard key={`kanban-${selectedJR.id}-${refreshKey}`} jrId={selectedJR.id} />
                             </TabsContent>
                         </Tabs>
                     </div>
@@ -266,6 +275,25 @@ export default function JRManagePage() {
                     </div>
                 )}
             </div>
+
+            {/* Add Candidate Dialog */}
+            {selectedJR && (
+                <AddCandidateDialog
+                    open={isAddCandOpen}
+                    onOpenChange={setIsAddCandOpen}
+                    jrId={selectedJR.id}
+                    onSuccess={() => {
+                        setRefreshKey(prev => prev + 1);
+                        // Also refresh analytics
+                        const loadAnalytics = async () => {
+                            const { getJRAnalytics } = await import("@/app/actions/jr-candidates");
+                            const data = await getJRAnalytics(selectedJR.id);
+                            setAnalytics(data);
+                        };
+                        loadAnalytics();
+                    }}
+                />
+            )}
         </div>
     );
 }

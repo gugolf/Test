@@ -19,12 +19,20 @@ export function JRTabs({ activeId, onSelect, onAdd }: JRTabsProps) {
 
     useEffect(() => {
         // Load from LocalStorage
-        try {
-            const stored = localStorage.getItem("ats_jr_tabs");
-            if (stored) setTabs(JSON.parse(stored));
-        } catch (e) {
-            console.error("Failed to load tabs", e);
-        }
+        const loadTabs = () => {
+            try {
+                const stored = localStorage.getItem("ats_jr_tabs");
+                if (stored) setTabs(JSON.parse(stored));
+            } catch (e) {
+                console.error("Failed to load tabs", e);
+            }
+        };
+
+        loadTabs();
+
+        // Listen for storage events (including custom dispatch in same window)
+        window.addEventListener("storage", loadTabs);
+        return () => window.removeEventListener("storage", loadTabs);
     }, []);
 
     // Save when activeId changes (add active to tabs)
