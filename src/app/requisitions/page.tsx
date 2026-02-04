@@ -11,7 +11,8 @@ import {
     LogOut,
     CheckCircle2,
     BarChart,
-    Users
+    Users,
+    UploadCloud
 } from "lucide-react";
 
 export default function RequisitionsMenuPage() {
@@ -56,12 +57,29 @@ export default function RequisitionsMenuPage() {
                     onClick={() => router.push('/requisitions/placements')}
                 />
 
-                {/* 5. Resignation Table */}
                 <MenuCard
                     title="Resignation Table"
                     icon={LogOut}
                     color="bg-red-100 text-red-600"
                     onClick={() => router.push('/requisitions/resignations')}
+                />
+
+                {/* 6. Report Center */}
+                <MenuCard
+                    title="Report Center"
+                    subtitle="Centralized Reports"
+                    icon={BarChart}
+                    color="bg-sky-100 text-sky-600"
+                    onClick={() => router.push('/requisitions/reports')}
+                />
+
+                {/* 7. CSV Import */}
+                <MenuCard
+                    title="Import Candidate CSV"
+                    subtitle="Bulk Upload & Dup Check"
+                    icon={UploadCloud}
+                    color="bg-purple-100 text-purple-600"
+                    onClick={() => router.push('/candidates/import')}
                 />
 
             </div>

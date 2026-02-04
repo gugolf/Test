@@ -281,6 +281,109 @@ export async function addCandidatesToJR(
     }
 }
 
+export async function bulkAddCandidatesToJR(
+    jrId: string,
+    candidates: { id: string, name: string }[],
+    listType: string = 'Longlist'
+): Promise<{ success: boolean; added: number; duplicates: string[]; error?: string }> {
+    const supabase = adminAuthClient;
+
+    try {
+        // 1. Fetch existing candidates in this JR to filter duplicates
+        const { data: existing, error: fetchError } = await supabase
+            .from('jr_candidates')
+            .select('candidate_id')
+            .eq('jr_id', jrId);
+
+        if (fetchError) throw fetchError;
+
+        const existingIds = new Set(existing?.map((e: any) => e.candidate_id));
+        const toAdd = [];
+        const duplicates = [];
+
+        for (const c of candidates) {
+            if (existingIds.has(c.id)) {
+                duplicates.push(c.name);
+            } else {
+                toAdd.push(c.id);
+            }
+        }
+
+        if (toAdd.length === 0) {
+            return { success: true, added: 0, duplicates };
+        }
+
+        // 2. Reuse efficient logic from addCandidatesToJR (but we need to inline it or call it safely)
+        // Since addCandidatesToJR assumes no duplicates or might error, we'll implement the insert logic here carefully.
+
+        // Get Max IDs
+        const { data: maxResult } = await supabase
+            .from('jr_candidates')
+            .select('jr_candidate_id')
+            .order('jr_candidate_id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let nextJrCandId = 1;
+        if (maxResult && (maxResult as any).jr_candidate_id) {
+            nextJrCandId = parseInt((maxResult as any).jr_candidate_id) + 1;
+        }
+
+        const { data: maxLogResult } = await supabase
+            .from('status_log')
+            .select('log_id')
+            .order('log_id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let nextLogId = 1;
+        if (maxLogResult && (maxLogResult as any).log_id) {
+            nextLogId = parseInt((maxLogResult as any).log_id) + 1;
+        }
+
+        const jrCandidatesInsert = [];
+        const statusLogsInsert = [];
+        const now = new Date();
+        const timestampStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`; // M/D/YYYY
+
+        for (const candidateId of toAdd) {
+            const jrCandidateId = nextJrCandId;
+
+            jrCandidatesInsert.push({
+                jr_candidate_id: jrCandidateId,
+                jr_id: jrId,
+                candidate_id: candidateId,
+                temp_status: 'Pool Candidate', // Defaulting to Pool
+                list_type: listType,
+                time_stamp: new Date().toISOString()
+            });
+
+            statusLogsInsert.push({
+                log_id: nextLogId,
+                jr_candidate_id: jrCandidateId,
+                status: 'Pool Candidate',
+                updated_By: 'System',
+                timestamp: timestampStr
+            });
+
+            nextJrCandId++;
+            nextLogId++;
+        }
+
+        const { error: candError } = await supabase.from('jr_candidates').insert(jrCandidatesInsert as any);
+        if (candError) throw candError;
+
+        const { error: logError } = await supabase.from('status_log').insert(statusLogsInsert as any);
+        if (logError) throw logError;
+
+        return { success: true, added: toAdd.length, duplicates };
+
+    } catch (e: any) {
+        console.error("Bulk Add Error:", e);
+        return { success: false, added: 0, duplicates: [], error: e.message };
+    }
+}
+
 export async function getExistingCandidateIdsForJR(jrId: string): Promise<string[]> {
     const supabase = adminAuthClient;
     const { data, error } = await supabase

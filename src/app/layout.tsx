@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Bell, Search, UserCircle } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -72,6 +73,7 @@ export default function RootLayout({
               </main>
             </div>
           </div>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

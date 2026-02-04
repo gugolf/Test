@@ -11,7 +11,7 @@ import { KanbanBoard } from "@/components/kanban-board";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, List, Kanban, MessageSquare, Briefcase } from "lucide-react";
+import { Plus, List, Kanban, MessageSquare, Briefcase, Share2, Loader2 } from "lucide-react";
 import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
@@ -20,7 +20,9 @@ import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle, Dialog
 import { JRTabs } from "@/components/jr-tabs";
 import { CreateJobRequisitionForm } from "@/components/create-jr-form";
 import { AddCandidateDialog } from "@/components/add-candidate-dialog";
-// Actually, let's just use window.location.reload() or re-trigger fetch.
+import { ReportViewDialog } from "@/components/report-view-dialog";
+import { triggerReport } from "@/app/actions/n8n-actions";
+import { toast } from "sonner";
 
 export default function JRManagePage() {
     const router = useRouter();
@@ -37,6 +39,8 @@ export default function JRManagePage() {
     const [isAddCandOpen, setIsAddCandOpen] = useState(false);
     const [analytics, setAnalytics] = useState<any>(null);
     const [refreshKey, setRefreshKey] = useState(0); // Trigger refresh for candidates
+    const [isReportViewOpen, setIsReportViewOpen] = useState(false);
+    const [isTriggeringReport, setIsTriggeringReport] = useState(false);
 
     // Sync URL with Tab
     const handleTabChange = (val: string) => {
@@ -112,6 +116,21 @@ export default function JRManagePage() {
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
+    const handleCreateReport = async () => {
+        if (!selectedJR) return;
+
+        setIsTriggeringReport(true);
+        // Using a dummy email for now since we don't have auth context here yet
+        const res = await triggerReport(selectedJR.id, "admin@cgtalenthub.com");
+
+        if (res.success) {
+            toast.success("Report generation triggered! Wait a few minutes for n8n to finish.");
+        } else {
+            toast.error(`Error: ${res.error}`);
+        }
+        setIsTriggeringReport(false);
+    };
+
     return (
         <div className="flex flex-col min-h-screen bg-slate-50/50 dark:bg-black">
             {/* Top Tabs Bar */}
@@ -169,16 +188,38 @@ export default function JRManagePage() {
                         </Dialog>
 
                         {/* Actions dependent on JR selection */}
-                        <Button disabled={!selectedJR} variant="outline">
-                            <MessageSquare className="mr-2 h-4 w-4" /> View Feedback
-                        </Button>
-                        {/* Placeholder for Add Candidate */}
-                        <Button
-                            disabled={!selectedJR}
-                            onClick={() => setIsAddCandOpen(true)}
-                        >
-                            <Plus className="mr-2 h-4 w-4" /> Add Candidate
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button
+                                disabled={!selectedJR || isTriggeringReport}
+                                variant="outline"
+                                onClick={handleCreateReport}
+                                className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                            >
+                                {isTriggeringReport ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Working...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Share2 className="mr-2 h-4 w-4" /> Create Report
+                                    </>
+                                )}
+                            </Button>
+                            <Button
+                                disabled={!selectedJR}
+                                variant="outline"
+                                onClick={() => setIsReportViewOpen(true)}
+                                className="border-slate-200"
+                            >
+                                <BarChart className="mr-2 h-4 w-4" /> View History
+                            </Button>
+                            <Button
+                                disabled={!selectedJR}
+                                onClick={() => setIsAddCandOpen(true)}
+                            >
+                                <Plus className="mr-2 h-4 w-4" /> Add Candidate
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -292,6 +333,16 @@ export default function JRManagePage() {
                         };
                         loadAnalytics();
                     }}
+                />
+            )}
+
+            {/* Report History Dialog */}
+            {selectedJR && (
+                <ReportViewDialog
+                    open={isReportViewOpen}
+                    onOpenChange={setIsReportViewOpen}
+                    jrId={selectedJR.id}
+                    jobName={selectedJR.job_title}
                 />
             )}
         </div>

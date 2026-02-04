@@ -47,33 +47,49 @@ export async function POST(req: NextRequest) {
 
         // 2. Insert new candidate into Candidate Profile
         // Columns mapped from check-db.js output / user context
+        // 2. Insert new candidate into Candidate Profile
+        // Columns mapped from check-db.js output / user context
         const { error: insertError } = await supabase
             .from('Candidate Profile')
             .insert([
                 {
-                    "candidate_id": newId,
-                    "Name": name,
-                    "Email": email || null,
-                    "Mobile_phone": phone || null,
-                    "Nationality": nationality || null,
-                    "Gender": body.gender || null,
-                    "Linkedin_URL": body.linkedin || null,
-                    "Date_of_birth": body.date_of_birth || null,
-                    "Bachelor_graduation_year": body.year_of_bachelor_education ? parseInt(body.year_of_bachelor_education) : null,
-                    "Age": body.age ? parseInt(body.age) : null,
-                    "Created_date": new Date().toISOString(),
-                    "Modify_date": new Date().toISOString(),
-                    "enhancement": {
-                        skills: body.skills,
-                        education_summary: body.education,
-                        languages: body.languages
-                    }
+                    candidate_id: newId,
+                    name: name,
+                    email: email || null,
+                    mobile_phone: phone || null,
+                    nationality: nationality || null,
+                    gender: body.gender || null,
+                    linkedin: body.linkedin || null,
+                    date_of_birth: body.date_of_birth || null,
+                    year_of_bachelor_education: body.year_of_bachelor_education ? parseInt(body.year_of_bachelor_education) : null,
+                    age: body.age ? parseInt(body.age) : null,
+                    created_date: new Date().toISOString(),
+                    modify_date: new Date().toISOString()
                 }
             ]);
 
         if (insertError) {
             console.error("Error inserting candidate:", insertError);
             return NextResponse.json({ error: 'Failed to create candidate: ' + insertError.message }, { status: 500 });
+        }
+
+        // 3. Insert into candidate_profile_enhance
+        const { error: enhanceError } = await supabase
+            .from('candidate_profile_enhance')
+            .insert([
+                {
+                    candidate_id: newId,
+                    name: name,
+                    linkedin_url: body.linkedin || null,
+                    skills_list: body.skills || null,
+                    education_summary: body.education || null,
+                    languages: body.languages || null
+                }
+            ]);
+
+        if (enhanceError) {
+            console.error("Error inserting enhancement data:", enhanceError);
+            // We don't return error here to avoid blocking valid candidate creation, but we log it.
         }
 
         /* 

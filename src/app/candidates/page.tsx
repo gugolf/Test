@@ -219,12 +219,12 @@ export default function CandidatesMenuPage() {
                     onClick={() => window.location.href = '/candidates/new'}
                 />
 
-                {/* 4. Upload CSV */}
                 <MenuCard
                     title="Upload CSV File"
                     icon={FileText}
                     color="bg-emerald-500"
                     description="Bulk import via Excel/CSV"
+                    onClick={() => window.location.href = '/candidates/import'}
                 />
 
                 {/* 5. All List */}

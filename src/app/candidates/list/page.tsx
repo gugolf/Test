@@ -15,12 +15,15 @@ import {
     User,
     Tags,
     Filter,
-    Check
+    Check,
+    LayoutList,
+    Table as TableIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { CandidateTableView } from "./table-view";
 import {
     Popover,
     PopoverContent,
@@ -79,6 +82,7 @@ export default function CandidateListPage() {
 
     // Filters State
     const [showFilters, setShowFilters] = useState(false);
+    const [viewMode, setViewMode] = useState<'list' | 'table'>('list');
     const [searchTerm, setSearchTerm] = useState("");
     const [filters, setFilters] = useState({
         countries: [] as string[],
@@ -268,6 +272,26 @@ export default function CandidateListPage() {
                         <Button variant="outline" size="sm" className="h-9 gap-2">
                             <Download className="h-4 w-4" /> <span className="hidden sm:inline">Export</span>
                         </Button>
+                        <div className="flex items-center border rounded-md bg-secondary/20 p-0.5 ml-1 h-9">
+                            <Button
+                                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                                size="sm"
+                                className="h-8 w-8 p-0 rounded-sm shadow-none"
+                                onClick={() => setViewMode('list')}
+                                title="List View"
+                            >
+                                <LayoutList className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                                size="sm"
+                                className="h-8 w-8 p-0 rounded-sm shadow-none"
+                                onClick={() => setViewMode('table')}
+                                title="Table View"
+                            >
+                                <TableIcon className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -348,24 +372,30 @@ export default function CandidateListPage() {
                 )}
             </div>
 
-            {/* Results List */}
-            <div className="flex-1 space-y-4 overflow-y-auto pr-2 pb-2">
-                {loading ? (
-                    <div className="space-y-4 opacity-50">
-                        {[1, 2, 3].map(i => <div key={i} className="h-40 w-full bg-secondary/20 animate-pulse rounded-xl" />)}
-                    </div>
-                ) : candidates.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
-                        <Filter className="h-10 w-10 opacity-20" />
-                        <p>No candidates found matching your specific criteria.</p>
-                        <Button variant="link" onClick={clearAll}>Clear all filters</Button>
-                    </div>
-                ) : (
-                    candidates.map(candidate => (
-                        <CandidateRichCard key={candidate.candidate_id} candidate={candidate} />
-                    ))
-                )}
-            </div>
+            {/* Results Content */}
+            {viewMode === 'table' ? (
+                <div className="flex-1 overflow-y-auto pr-2 pb-2">
+                    <CandidateTableView candidates={candidates} loading={loading} />
+                </div>
+            ) : (
+                <div className="flex-1 space-y-4 overflow-y-auto pr-2 pb-2">
+                    {loading ? (
+                        <div className="space-y-4 opacity-50">
+                            {[1, 2, 3].map(i => <div key={i} className="h-40 w-full bg-secondary/20 animate-pulse rounded-xl" />)}
+                        </div>
+                    ) : candidates.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
+                            <Filter className="h-10 w-10 opacity-20" />
+                            <p>No candidates found matching your specific criteria.</p>
+                            <Button variant="link" onClick={clearAll}>Clear all filters</Button>
+                        </div>
+                    ) : (
+                        candidates.map(candidate => (
+                            <CandidateRichCard key={candidate.candidate_id} candidate={candidate} />
+                        ))
+                    )}
+                </div>
+            )}
 
             {/* Pagination Controls */}
             <div className="flex items-center justify-between border-t border-border pt-4">

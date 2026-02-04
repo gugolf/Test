@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, UserPlus, Briefcase, Mail, Phone, Globe, Check, ChevronsUpDown } from "lucide-react";
+import { ArrowLeft, Save, UserPlus, Briefcase, Mail, Phone, Globe, Check, ChevronsUpDown, Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Command,
     CommandEmpty,
@@ -22,6 +23,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import { toast } from "sonner"; // Assuming sonner is available as used in Edit page
 
 export default function NewCandidatePage() {
     const router = useRouter();
@@ -32,6 +34,9 @@ export default function NewCandidatePage() {
     const [openNat, setOpenNat] = useState(false);
 
     // Form State
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState<string>("");
+
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -83,11 +88,20 @@ export default function NewCandidatePage() {
         setFormData(prev => ({ ...prev, [id]: value }));
     };
 
+    const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setPhotoFile(file);
+            setPhotoPreview(URL.createObjectURL(file));
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
 
         try {
+            // 1. Create Candidate via API
             const res = await fetch('/api/candidates/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -97,7 +111,40 @@ export default function NewCandidatePage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to create candidate');
 
-            router.push(`/candidates/${data.candidate_id}/experiences/new`);
+            const newId = data.candidate_id;
+
+            // 2. Upload Photo (if selected)
+            if (photoFile && newId) {
+                try {
+                    const fileExt = photoFile.name.split('.').pop();
+                    const fileName = `${newId}-${Date.now()}.${fileExt}`;
+                    const filePath = `${fileName}`;
+
+                    const { error: uploadError } = await supabase.storage
+                        .from('avatars')
+                        .upload(filePath, photoFile);
+
+                    if (uploadError) throw uploadError;
+
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('avatars')
+                        .getPublicUrl(filePath);
+
+                    // Update Profile with Photo URL
+                    await supabase
+                        .from('Candidate Profile')
+                        .update({ photo: publicUrl })
+                        .eq('candidate_id', newId);
+
+                } catch (uploadErr) {
+                    console.error("Failed to upload photo:", uploadErr);
+                    // Don't stop flow, just warn
+                    // toast.warning("Candidate created but photo upload failed.");
+                }
+            }
+
+            // 3. Redirect
+            router.push(`/candidates/${newId}/experiences/new`);
 
         } catch (error: any) {
             alert("Error: " + error.message);
@@ -126,7 +173,24 @@ export default function NewCandidatePage() {
                         </div>
                     </CardHeader>
 
-                    <CardContent className="space-y-6 pt-6">
+                    <CardContent className="space-y-8 pt-6">
+
+                        {/* Avatar Selection */}
+                        <div className="flex justify-center mb-6">
+                            <div className="relative group">
+                                <Avatar className="h-28 w-28 border-4 border-background shadow-lg ring-2 ring-border/50">
+                                    <AvatarImage src={photoPreview} className="object-cover" />
+                                    <AvatarFallback className="text-2xl font-bold bg-secondary text-primary">
+                                        {formData.name ? formData.name.substring(0, 2).toUpperCase() : <UserPlus className="h-8 w-8 opacity-50" />}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <Label htmlFor="photo-upload" className="absolute bottom-0 right-0 p-2 bg-primary text-primary-foreground rounded-full cursor-pointer hover:bg-primary/90 transition-colors shadow-lg">
+                                    <Camera className="h-4 w-4" />
+                                    <Input id="photo-upload" type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
+                                </Label>
+                            </div>
+                        </div>
+
                         {/* Section 1: Identity */}
                         <div className="space-y-4">
                             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Metric Identity</h3>
@@ -275,7 +339,7 @@ export default function NewCandidatePage() {
                     <CardFooter className="flex justify-between items-center bg-secondary/10 py-4 rounded-b-xl border-t">
                         <p className="text-xs text-muted-foreground hidden sm:block">ID Generated Automatically</p>
                         <Button type="submit" disabled={loading} className="gap-2 shadow-lg shadow-primary/20">
-                            {loading ? "Creating..." : <><Save className="h-4 w-4" /> Save & Continue</>}
+                            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : <><Save className="h-4 w-4" /> Save & Continue</>}
                         </Button>
                     </CardFooter>
                 </Card>

@@ -11,7 +11,9 @@ import {
     ChevronLeft,
     ChevronRight,
     Plus,
-    BarChart3
+    BarChart3,
+    Webhook,
+    Network
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -21,8 +23,10 @@ const menuItems = [
     { name: "Overview", icon: LayoutDashboard, path: "/" },
     { name: "Dashboard", icon: BarChart3, path: "/dashboard" }, // Renamed from Analytics
     { name: "Candidates", icon: Users, path: "/candidates" },
+    { name: "Org Chart", icon: Network, path: "/org-chart" },
     { name: "Job Requisitions", icon: Briefcase, path: "/requisitions" },
     { name: "Settings", icon: Settings, path: "/settings" },
+    { name: "n8n Integration", icon: Webhook, path: "/admin/n8n" },
 ];
 
 export function Sidebar() {
