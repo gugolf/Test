@@ -7,8 +7,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getJRCandidateDetails } from "@/app/actions/jr-candidate-logs";
 import { cn } from "@/lib/utils";
 
-export default async function CandidateLogPage({ params }: { params: { jr_candidate_id: string } }) {
-    const data = await getJRCandidateDetails(params.jr_candidate_id);
+export default async function CandidateLogPage({ params }: { params: Promise<{ jr_candidate_id: string }> }) {
+    const { jr_candidate_id } = await params;
+    const data = await getJRCandidateDetails(jr_candidate_id);
 
     if (!data) {
         return <div className="p-8 text-center">Candidate data not found</div>;

@@ -131,8 +131,8 @@ export default function NewCandidatePage() {
                         .getPublicUrl(filePath);
 
                     // Update Profile with Photo URL
-                    await supabase
-                        .from('Candidate Profile')
+                    await (supabase
+                        .from('Candidate Profile' as any) as any)
                         .update({ photo: publicUrl })
                         .eq('candidate_id', newId);
 

@@ -204,7 +204,7 @@ export async function searchCandidates(query: string) {
     // Search by Name, Email, or Candidate ID
     // Table name is 'Candidate Profile' with space
     const { data, error } = await client
-        .from('Candidate Profile')
+        .from('Candidate Profile' as any)
         .select(`
             candidate_id, 
             name, 

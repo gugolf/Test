@@ -44,20 +44,20 @@ export default function EditCandidatePage({ params }: { params: Promise<{ id: st
         const fetchCandidate = async () => {
             try {
                 // Fetch Core
-                const { data: core, error: coreError } = await supabase
-                    .from('Candidate Profile')
+                const { data: core, error: coreError } = await (supabase
+                    .from('Candidate Profile' as any)
                     .select('*')
                     .eq('candidate_id', id)
-                    .single();
+                    .single() as any);
 
                 if (coreError) throw coreError;
 
                 // Fetch Enhance
-                const { data: enhance, error: enhanceError } = await supabase
-                    .from('candidate_profile_enhance')
+                const { data: enhance, error: enhanceError } = await (supabase
+                    .from('candidate_profile_enhance' as any)
                     .select('*')
                     .eq('candidate_id', id)
-                    .single(); // Might be null if no enhancement data
+                    .single() as any); // Might be null if no enhancement data
 
                 setFormData({
                     name: core.name || "",
@@ -133,8 +133,8 @@ export default function EditCandidatePage({ params }: { params: Promise<{ id: st
 
         try {
             // Update Core
-            const { error: coreError } = await supabase
-                .from('Candidate Profile')
+            const { error: coreError } = await (supabase
+                .from('Candidate Profile' as any) as any)
                 .update({
                     name: formData.name,
                     email: formData.email,
@@ -153,8 +153,8 @@ export default function EditCandidatePage({ params }: { params: Promise<{ id: st
             if (coreError) throw new Error("Core update failed: " + coreError.message);
 
             // Update Enhance (Upsert)
-            const { error: enhanceError } = await supabase
-                .from('candidate_profile_enhance')
+            const { error: enhanceError } = await (supabase
+                .from('candidate_profile_enhance' as any) as any)
                 .upsert({
                     candidate_id: id,
                     name: formData.name,

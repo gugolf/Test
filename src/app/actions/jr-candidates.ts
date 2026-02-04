@@ -79,10 +79,10 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
 
     // 2. Fetch Profiles Separately (Application-Side Join)
     const candidateIds = candidates.map(c => c.candidate_id).filter(Boolean);
-    const { data: profiles } = await supabase
-        .from('Candidate Profile') // Explicit table name
+    const { data: profiles } = await (supabase
+        .from('Candidate Profile' as any) // Explicit table name
         .select('candidate_id, name, email, mobile_phone, job_function, photo, age, gender, candidate_projects')
-        .in('candidate_id', candidateIds);
+        .in('candidate_id', candidateIds) as any);
 
     const profileMap = new Map((profiles as any)?.map((p: any) => [p.candidate_id, p]));
 

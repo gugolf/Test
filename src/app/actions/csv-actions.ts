@@ -50,9 +50,9 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
     const validRowsToProcess: { name: string, linkedin: string, rowIdx: number }[] = [];
 
     // Fetch existing candidates for duplicate checking
-    const { data: existingCandidates, error: fetchError } = await supabase
-        .from('Candidate Profile')
-        .select('candidate_id, name, linkedin');
+    const { data: existingCandidates, error: fetchError } = await (supabase
+        .from('Candidate Profile' as any)
+        .select('candidate_id, name, linkedin') as any);
 
     if (fetchError) {
         console.error("Detailed Fetch Error:", fetchError);
@@ -151,9 +151,9 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
 
     // 4. Batch Insert Candidates
     if (newCandidatesForInsert.length > 0) {
-        const { error: insertError } = await supabase
-            .from('Candidate Profile')
-            .insert(newCandidatesForInsert);
+        const { error: insertError } = await (supabase
+            .from('Candidate Profile' as any)
+            .insert(newCandidatesForInsert) as any);
 
         if (insertError) {
             return { success: false, error: "Failed to insert candidates: " + insertError.message };

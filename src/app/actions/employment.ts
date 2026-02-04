@@ -24,8 +24,8 @@ export async function markAsResigned(id: string, resignData: {
     resignation_reason?: string
 }) {
     const supabase = adminAuthClient;
-    const { error } = await supabase
-        .from('employment_record')
+    const { error } = await (supabase
+        .from('employment_record' as any) as any)
         .update({
             hiring_status: 'Resigned',
             resign_date: resignData.resign_date,

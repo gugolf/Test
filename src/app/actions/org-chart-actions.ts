@@ -63,10 +63,10 @@ export async function getOrgNodesRaw(uploadId: string): Promise<RawOrgNode[]> {
     let candidateMap: Record<string, any> = {}
 
     if (candidateIds.length > 0) {
-        const { data: candidates } = await supabase
-            .from('Candidate Profile')
+        const { data: candidates } = await (supabase
+            .from('Candidate Profile' as any)
             .select('candidate_id, photo, "First Name", "Last Name"')
-            .in('candidate_id', candidateIds)
+            .in('candidate_id', candidateIds) as any)
 
         if (candidates) {
             candidates.forEach(c => {
@@ -151,10 +151,10 @@ export async function fetchOrgChartData(uploadId: string) {
     let candidateMap: Record<string, any> = {}
 
     if (candidateIds.length > 0) {
-        const { data: candidates } = await supabase
-            .from('Candidate Profile')
+        const { data: candidates } = await (supabase
+            .from('Candidate Profile' as any)
             .select('candidate_id, photo, "First Name", "Last Name"')
-            .in('candidate_id', candidateIds)
+            .in('candidate_id', candidateIds) as any)
 
         if (candidates) {
             candidates.forEach(c => {

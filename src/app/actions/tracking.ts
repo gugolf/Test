@@ -10,6 +10,7 @@ export interface TrackingStats {
         count: number;
         avgDays: number;
         maxDays: number;
+        color?: string;
     }[];
     buData: { bu: string; count: number }[];
     positionData: { position: string; count: number }[];
@@ -174,8 +175,9 @@ export async function getTrackingData(filters: {
         return {
             status: m.status,
             count: statusCounts[m.status] || 0,
-            avgDays: durs.length > 0 ? Math.round((durs.reduce((a, b) => a + b, 0) / durs.length) * 10) / 10 : 0,
-            maxDays: durs.length > 0 ? Math.round(Math.max(...durs) * 10) / 10 : 0
+            avgDays: durs.length > 0 ? Math.round((durs.reduce((a: number, b: number) => a + b, 0) / durs.length) * 10) / 10 : 0,
+            maxDays: durs.length > 0 ? Math.round(Math.max(...durs) * 10) / 10 : 0,
+            color: (m as any).color_code || undefined
         };
     }).filter(f => f.count > 0);
 
