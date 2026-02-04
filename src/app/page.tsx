@@ -4,17 +4,18 @@ import React, { useEffect, useState } from "react";
 import {
   Users,
   Briefcase,
-  Calendar,
   TrendingUp,
   History,
   ChevronRight,
-  UserCircle
+  UserCircle,
+  BarChart3,
+  Clock
 } from "lucide-react";
-import { supabase } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { getTrackingData, TrackingStats } from "@/app/actions/tracking";
 
 interface Metrics {
   totalCandidates: number;
@@ -23,32 +24,36 @@ interface Metrics {
   interviewsThisWeek: number;
 }
 
-export default function DashboardPage() {
+export default function OverviewPage() {
+  const router = useRouter();
   const [metrics, setMetrics] = useState<Metrics>({
     totalCandidates: 0,
     activeJobs: 0,
     inactiveJobs: 0,
     interviewsThisWeek: 12,
   });
+  const [tracking, setTracking] = useState<TrackingStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchMetrics() {
+    async function fetchData() {
       try {
         setLoading(true);
-        // Fetch from internal API to bypass RLS using Service Role
+        // 1. Fetch Global Stats
         const res = await fetch('/api/stats');
         const data = await res.json();
 
-        if (data.error) throw new Error(data.error);
+        // 2. Fetch Tracking Data for Funnel (Global)
+        const trackData = await getTrackingData({});
+        setTracking(trackData);
 
-        setMetrics(prev => ({
-          ...prev,
-          totalCandidates: data.totalCandidates,
-          activeJobs: data.activeJobs,
-          inactiveJobs: data.inactiveJobs,
-        }));
+        setMetrics({
+          totalCandidates: data.totalCandidates || 0,
+          activeJobs: data.activeJobs || 0,
+          inactiveJobs: data.inactiveJobs || 0,
+          interviewsThisWeek: 12,
+        });
 
       } catch (err: any) {
         setError(err.message);
@@ -56,120 +61,170 @@ export default function DashboardPage() {
         setLoading(false);
       }
     }
-    fetchMetrics();
+    fetchData();
   }, []);
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-10 bg-slate-50/30 p-4 -m-4 rounded-3xl min-h-screen">
       {/* Welcome Header */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-4xl font-extrabold tracking-tight">Overview</h1>
-        <p className="text-lg text-muted-foreground font-medium">CG Talent Hub Thailand Intelligence Platform.</p>
+        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Overview</h1>
+        <p className="text-lg text-slate-500 font-medium">CG Talent Hub Intelligence Platform.</p>
       </div>
 
       {error && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-2xl text-destructive text-sm font-bold flex items-center gap-2">
+        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm font-bold flex items-center gap-2">
           <History className="h-4 w-4" /> System Alert: {error}
         </div>
       )}
 
       {/* Premium Stats Grid */}
       <div className="grid gap-6 md:grid-cols-3">
-        <Card className="relative overflow-hidden group border-none bg-gradient-to-br from-blue-500/5 to-transparent ring-1 ring-border shadow-2xl">
+        <Card className="relative overflow-hidden group border-none bg-white ring-1 ring-slate-200 shadow-xl transition-all hover:shadow-2xl">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-bold text-blue-500 uppercase tracking-widest">Global Talent Pool</CardTitle>
+            <CardTitle className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Global Talent Pool</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-5xl font-black tracking-tighter">
-              {loading ? "..." : metrics.totalCandidates}
+            <div className="text-5xl font-black tracking-tighter text-slate-900">
+              {loading ? "..." : metrics.totalCandidates.toLocaleString()}
             </div>
             <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-emerald-500 uppercase">
-              <TrendingUp className="h-3 w-3" /> Growth: +12.5%
+              <TrendingUp className="h-3 w-3" /> Growth: Active
             </div>
           </CardContent>
+          <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
+            <Users className="w-12 h-12" />
+          </div>
         </Card>
 
-        <Card className="relative overflow-hidden group border-none bg-gradient-to-br from-purple-500/5 to-transparent ring-1 ring-border shadow-2xl">
+        <Card className="relative overflow-hidden group border-none bg-white ring-1 ring-slate-200 shadow-xl transition-all hover:shadow-2xl">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-bold text-purple-500 uppercase tracking-widest">Open Requisitions</CardTitle>
+            <CardTitle className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Open Requisitions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-5xl font-black tracking-tighter">
+            <div className="text-5xl font-black tracking-tighter text-slate-900">
               {loading ? "..." : metrics.activeJobs}
             </div>
-            <div className="mt-4 text-[10px] font-bold flex gap-3 text-muted-foreground uppercase">
-              <span className="text-purple-500">{metrics.activeJobs} ACTIVE</span>
+            <div className="mt-4 text-[10px] font-bold flex gap-3 text-slate-500 uppercase">
+              <span className="text-indigo-600 font-black">{metrics.activeJobs} ACTIVE</span>
               <span>{metrics.inactiveJobs} TOTAL INACTIVE</span>
             </div>
           </CardContent>
+          <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
+            <Briefcase className="w-12 h-12" />
+          </div>
         </Card>
 
-        <Card className="relative overflow-hidden group border-none bg-gradient-to-br from-pink-500/5 to-transparent ring-1 ring-border shadow-2xl">
+        <Card className="relative overflow-hidden group border-none bg-white ring-1 ring-slate-200 shadow-xl transition-all hover:shadow-2xl">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-bold text-pink-500 uppercase tracking-widest">Active Interviews</CardTitle>
+            <CardTitle className="text-[10px] font-black text-rose-500 uppercase tracking-widest">System Health</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-5xl font-black tracking-tighter">{metrics.interviewsThisWeek}</div>
-            <div className="mt-4 text-[10px] font-bold text-pink-500 uppercase tracking-wide">
-              Priority: 3 Critical Today
+            <div className="text-5xl font-black tracking-tighter text-slate-900">98%</div>
+            <div className="mt-4 text-[10px] font-bold text-rose-500 uppercase tracking-wide">
+              All services operational
             </div>
           </CardContent>
+          <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
+            <TrendingUp className="w-12 h-12" />
+          </div>
         </Card>
       </div>
 
       {/* Main Insights section */}
       <div className="grid gap-8 lg:grid-cols-5">
-        <Card className="lg:col-span-3 border-none ring-1 ring-border bg-card shadow-xl rounded-3xl">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold tracking-tight">Recruitment Funnel</CardTitle>
-            <CardDescription>Visualizing candidate stage distribution</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-8">
-            {[
-              { label: 'Applied', value: 145, max: 150, color: 'bg-blue-500' },
-              { label: 'Screening', value: 82, max: 150, color: 'bg-indigo-500' },
-              { label: 'Tech Assessment', value: 34, max: 150, color: 'bg-purple-500' },
-              { label: 'Offer Stage', value: 12, max: 150, color: 'bg-emerald-500' }
-            ].map((stage) => (
-              <div key={stage.label} className="space-y-3">
-                <div className="flex justify-between items-end">
-                  <span className="text-[10px] font-black uppercase text-muted-foreground">{stage.label}</span>
-                  <span className="text-xl font-black">{stage.value}</span>
-                </div>
-                <div className="h-2 w-full bg-secondary/50 rounded-full overflow-hidden">
-                  <div
-                    className={cn("h-full rounded-full transition-all duration-1000", stage.color)}
-                    style={{ width: `${(stage.value / stage.max) * 100}%` }}
-                  />
-                </div>
+        <Card className="lg:col-span-3 border-none ring-1 ring-slate-200 bg-white shadow-2xl rounded-3xl overflow-hidden">
+          <CardHeader className="border-b bg-slate-50 px-8 py-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="text-xl font-black tracking-tight text-slate-800">Recruitment Funnel</CardTitle>
+                <CardDescription className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">Real-time candidate distribution</CardDescription>
               </div>
-            ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-[10px] font-black uppercase tracking-widest bg-white"
+                onClick={() => router.push('/requisitions/tracking')}
+              >
+                Full Analytics <BarChart3 className="ml-2 w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-8 space-y-6">
+            {loading ? (
+              <div className="h-[300px] w-full flex items-center justify-center animate-pulse bg-slate-50 rounded-2xl" />
+            ) : (
+              tracking?.funnelData.slice(0, 6).map((stage) => (
+                <div key={stage.status} className="space-y-2 group">
+                  <div className="flex justify-between items-end">
+                    <div className="flex items-center gap-3">
+                      <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: stage.color || '#cbd5e1' }} />
+                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider font-mono">{stage.status}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[9px] font-bold text-slate-400">AVG: {stage.avgDays} days</span>
+                      <span className="text-xl font-black text-slate-900">{stage.count}</span>
+                    </div>
+                  </div>
+                  <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                    <div
+                      className="h-full rounded-full transition-all duration-1000 ease-out shadow-sm"
+                      style={{
+                        width: `${tracking.funnelData[0]?.count > 0 ? (stage.count / tracking.funnelData[0].count) * 100 : 0}%`,
+                        backgroundColor: stage.color || '#6366f1'
+                      }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+            {!loading && (!tracking || tracking.funnelData.length === 0) && (
+              <div className="h-[300px] flex flex-col items-center justify-center text-slate-400 gap-2">
+                <Briefcase className="w-12 h-12 opacity-20" />
+                <p className="text-xs font-bold uppercase tracking-widest">No recruitment data available</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 border-none ring-1 ring-border bg-card shadow-xl rounded-3xl">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-xl font-bold tracking-tight">System Pulse</CardTitle>
-            <History className="h-4 w-4 text-muted-foreground" />
+        <Card className="lg:col-span-2 border-none ring-1 ring-slate-200 bg-white shadow-2xl rounded-3xl overflow-hidden">
+          <CardHeader className="border-b bg-slate-50 px-8 py-6 fle flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-xl font-black tracking-tight text-slate-800">Status Aging</CardTitle>
+              <CardDescription className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">Average days per stage</CardDescription>
+            </div>
+            <Clock className="h-5 w-5 text-slate-400" />
           </CardHeader>
-          <CardContent className="space-y-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex gap-4 items-start group">
-                <div className="h-10 w-10 shrink-0 rounded-2xl bg-secondary/50 flex items-center justify-center border border-border group-hover:border-primary/30 transition-all">
-                  <UserCircle className="h-6 w-6 text-muted-foreground group-hover:text-primary" />
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-bold group-hover:text-primary transition-colors">Candidate ID: {1000 + i}</span>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Stage updated to <b>Screening</b> by Recruiter.
-                  </p>
-                  <span className="text-[9px] font-bold text-muted-foreground tracking-tighter mt-1 opacity-50">2 HOURS AGO</span>
-                </div>
-              </div>
-            ))}
-            <Button variant="outline" className="w-full mt-6 rounded-2xl text-[10px] font-black uppercase tracking-widest gap-2">
-              View Audit Log <ChevronRight className="h-3 w-3" />
-            </Button>
+          <CardContent className="p-0">
+            <table className="w-full text-[11px]">
+              <thead className="bg-slate-900 text-slate-100">
+                <tr>
+                  <th className="px-6 py-3 text-left font-black uppercase tracking-widest">Stage</th>
+                  <th className="px-6 py-3 text-center font-black uppercase tracking-widest">Mean</th>
+                  <th className="px-6 py-3 text-center font-black uppercase tracking-widest">Peak</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {tracking?.funnelData.filter(d => d.count > 0).map((d) => (
+                  <tr key={d.status} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-700 uppercase tracking-tighter">{d.status}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-black font-mono">{d.avgDays}d</span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="bg-rose-50 text-rose-700 px-2 py-1 rounded-md font-black font-mono">{d.maxDays}d</span>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && tracking?.funnelData.filter(d => d.count > 0).length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-20 text-center text-slate-300 italic text-xs">
+                      No active recruitment cycles to track aging
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </CardContent>
         </Card>
       </div>

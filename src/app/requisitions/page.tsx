@@ -10,6 +10,7 @@ import {
     TableProperties,
     LogOut,
     CheckCircle2,
+    BarChart,
     Users
 } from "lucide-react";
 
@@ -33,12 +34,12 @@ export default function RequisitionsMenuPage() {
                 <MenuCard
                     title="Job Requisitions Manage"
                     subtitle="List & Feedback"
-                    icon={Briefcase}
+                    icon={LayoutList}
                     color="bg-orange-100 text-orange-600"
                     onClick={() => router.push('/requisitions/manage')}
                 />
 
-                {/* Job Requisition Table (Overview) - Restored */}
+                {/* 2. Job Requisition Table (Overview) */}
                 <MenuCard
                     title="Job Requisition Table"
                     icon={TableProperties}
@@ -46,18 +47,21 @@ export default function RequisitionsMenuPage() {
                     onClick={() => router.push('/requisitions/table')}
                 />
 
-                {/* 5. Successful Placement */}
+
+                {/* 4. Successful Placement */}
                 <MenuCard
                     title="Successful Placement Table"
                     icon={CheckCircle2}
                     color="bg-green-100 text-green-600"
+                    onClick={() => router.push('/requisitions/placements')}
                 />
 
-                {/* 6. Resignation Table */}
+                {/* 5. Resignation Table */}
                 <MenuCard
                     title="Resignation Table"
                     icon={LogOut}
                     color="bg-red-100 text-red-600"
+                    onClick={() => router.push('/requisitions/resignations')}
                 />
 
             </div>

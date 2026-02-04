@@ -14,6 +14,7 @@ import { RotateCcw, Loader2, Globe, TrendingUp, Users, Building, MapPin } from "
 import { FilterMultiSelect } from "@/components/ui/filter-multi-select";
 import { Button } from "@/components/ui/button";
 import { Tooltip as ReactTooltip } from "react-tooltip";
+import PipelineTab from "./PipelineTab";
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -258,9 +259,10 @@ export default function DashboardPage() {
             <h1 className="text-4xl font-extrabold tracking-tight text-foreground">Dashboard</h1>
 
             <Tabs defaultValue="global" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+                <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
                     <TabsTrigger value="global">Global Candidate Pool</TabsTrigger>
                     <TabsTrigger value="market">Salary Benchmark</TabsTrigger>
+                    <TabsTrigger value="pipeline">Recruitment Pipeline</TabsTrigger>
                 </TabsList>
 
                 {/* --- TAB 1: GLOBAL POOL --- */}
@@ -544,6 +546,11 @@ export default function DashboardPage() {
                             </div>
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                {/* --- TAB 3: RECRUITMENT PIPELINE --- */}
+                <TabsContent value="pipeline" className="space-y-6">
+                    <PipelineTab />
                 </TabsContent>
             </Tabs>
         </div>
