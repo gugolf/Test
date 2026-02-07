@@ -50,36 +50,34 @@ export async function checkDuplicateCandidate(name: string, linkedin: string): P
         return { isDuplicate: false, candidateId: null };
     }
 
-    // specific query to find potential matches
-    // We fetch a batch of candidates to check in memory or use OR logic.
-    // For performance on large DBs, specific indexes/columns for normalized values are better,
-    // but for now we'll select relevant fields and check in JS or use ILIKE if possible.
-    // Using Supabase/Postgrest 'or' syntax is efficient enough for medium datasets.
+    // Optimized: Fetch only potential matches using ILIKE
+    // This avoids fetching the entire database and hitting the 1000-row limit.
+    const nameQuery = `name.ilike.%${name}%`;
+    // Note: ilike with % matches substrings, but here we want close matches. 
+    // Better: name.ilike.${name} (exact match case-insensitive)
+    // But since we normalize/clean inputs, exact match might miss "Manish  Sharma" (spaces).
+    // Let's use flexible OR query.
 
-    // Note: To be strict, we really should have normalized columns in DB. 
-    // But since we can't change DB structure too much right now, we will fetch candidates that "might" match
-    // ideally we would fetch ALL id, name, linkedin and check in memory if list is small (<10k),
-    // or use a smart search.
-    // Let's try to match exactly on refined queries.
-
-    // However, since `name` matching usually requires fuzzy logic or exact normalized match, 
-    // and we don't have normalized columns, we might need to iterate.
-    // Given the previous `csv-actions.ts` did: `existingCandidates.find(...)` on ALL candidates,
-    // we should probably follow that pattern if dataset isn't huge, OR optimize.
-    // Let's optimize slightly: fetch rows where name ILIKE name OR linkedin ILIKE linkedin
-    // This is not perfect for 'Accent Removal' check on DB side without correct collation, 
-    // so we might still miss some if we rely ONLY on SQL.
-    // BUT user asked for Accent Removal logic which is JS based.
-
-    // Safer approach for now (Developer note): Fetch candidates and check in JS 
-    // IF the count is reasonable. If not, we rely on SQL.
-    // Let's stick to the pattern in `csv-actions` which seemed to fetch specific fields.
-    // Actually `csv-actions` fetched ALL. We will verify how many rows there are.
-    // For now, let's trust the user's scale isn't millions yet.
-
-    const { data: candidates, error } = await supabase
+    let query = supabase
         .from('Candidate Profile')
         .select('candidate_id, name, linkedin');
+
+    const conditions = [];
+    if (name) conditions.push(`name.ilike.${name}`);
+    if (linkedin) conditions.push(`linkedin.ilike.${linkedin}`);
+
+    // Also try to match without middle name or slightly fuzzy? 
+    // For now, adhere to the "Targeted" approach to be better than "Fetch All".
+    // If we want stricter "contains", we can use `%name%`, but that might fetch too many for common names.
+    // Let's stick to case-insensitive exact match for now as a safe optimization.
+
+    if (conditions.length > 0) {
+        query = query.or(conditions.join(','));
+    } else {
+        return { isDuplicate: false, candidateId: null };
+    }
+
+    const { data: candidates, error } = await query.order('candidate_id', { ascending: true });
 
     if (error || !candidates) {
         console.error("Duplicate Check Error:", error);
@@ -108,4 +106,46 @@ export async function checkDuplicateCandidate(name: string, linkedin: string): P
     }
 
     return { isDuplicate: false, candidateId: null };
+}
+
+// Check if candidate is currently being processed in other queues
+export async function checkActiveProcessing(name: string, linkedin: string, currentUploadId?: string): Promise<{ isProcessing: boolean, source?: string }> {
+    const normName = normalizeName(name);
+    const normLinkedIn = normalizeLinkedIn(linkedin);
+
+    if (!normName && !normLinkedIn) return { isProcessing: false };
+
+    // 1. Check CSV Upload Logs (Active)
+    const { data: csvLogs } = await supabase
+        .from('csv_upload_logs')
+        .select('name, linkedin')
+        .in('status', ['Scraping', 'Processing', 'PENDING']);
+
+    const inCsv = csvLogs?.some((log: any) =>
+        (log.name && normalizeName(log.name) === normName) ||
+        (log.linkedin && normalizeLinkedIn(log.linkedin) === normLinkedIn)
+    );
+
+    if (inCsv) return { isProcessing: true, source: 'CSV Queue' };
+
+    // 2. Check Resume Uploads (Active)
+    // Note: Resume uploads might not have name until processed, but if we are at callback stage, others might be too.
+    // We check for *other* completed/processing uploads that haven't been finalized into Candidate Profile yet?
+    // Actually, if it's 'Complete' in resume_uploads, it effectively SHOULD be in Candidate Profile soon.
+    // If it's 'Processing', we might catch race conditions.
+    if (currentUploadId) {
+        const { data: resumeLogs } = await supabase
+            .from('resume_uploads')
+            .select('candidate_name, id')
+            .neq('id', currentUploadId) // Don't match self
+            .in('status', ['Processing', 'Scraping']); // Check active statuses
+
+        const inResume = resumeLogs?.some((log: any) =>
+            (log.candidate_name && normalizeName(log.candidate_name) === normName)
+        );
+
+        if (inResume) return { isProcessing: true, source: 'Resume Queue' };
+    }
+
+    return { isProcessing: false };
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { checkDuplicateCandidate } from '@/app/actions/candidate-check';
+import { checkDuplicateCandidate, checkActiveProcessing } from '@/app/actions/candidate-check';
 import { updateUploadStatus } from '@/app/actions/resume-actions';
 
 // Initialize Supabase Client (Service Role for backend ops)
@@ -20,11 +20,31 @@ export async function POST(req: NextRequest) {
 
         console.log(`Processing Callback for Upload ID: ${upload_id}, Name: ${profile.name}`);
 
-        // 1. Check Duplicates
+        // 1. Check Duplicates (DB)
         const { isDuplicate, candidateId: existingId, reason } = await checkDuplicateCandidate(
             profile.name,
             profile.linkedin || ""
         );
+
+        if (isDuplicate && existingId) {
+            // ... handling (same as before) ...
+        }
+
+        // 1.1 Check Active Processing (Queue)
+        const { isProcessing, source } = await checkActiveProcessing(profile.name, profile.linkedin || "", upload_id);
+
+        if (isProcessing) {
+            console.log(`Active Duplicate found in ${source}: ${profile.name}`);
+            await updateUploadStatus(
+                upload_id,
+                `Duplicate found in ${source} (Active Processing)`
+            );
+            return NextResponse.json({
+                success: true,
+                status: 'Duplicate',
+                message: `Duplicate processing in ${source}`
+            });
+        }
 
         if (isDuplicate && existingId) {
             console.log(`Duplicate found (${reason}): ${existingId}`);

@@ -15,6 +15,20 @@ export interface UploadRecord {
 
 export async function createUploadRecord(record: UploadRecord) {
     try {
+        // 1. Check for duplicate file name
+        const { data: existing } = await supabase
+            .from('resume_uploads')
+            .select('id, status')
+            .eq('file_name', record.file_name)
+            .neq('status', 'Error') // Ignore failed uploads
+            .single();
+
+        if (existing) {
+            console.log(`Duplicate file upload attempt: ${record.file_name}`);
+            return { success: false, error: 'Duplicate file: This resume has already been uploaded.' };
+        }
+
+        // 2. Insert new record
         const { data, error } = await supabase
             .from('resume_uploads')
             .insert([

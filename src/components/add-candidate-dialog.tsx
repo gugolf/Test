@@ -320,7 +320,7 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-0.5">
                                                 <p className={cn("text-base font-black truncate transition-colors", isSelected ? "text-primary" : "text-slate-800")}>{c.name}</p>
-                                                <Badge variant="secondary" className="text-[10px] font-mono font-black h-4.5 bg-slate-100 text-slate-500 border-none px-1.5">{c.candidate_id}</Badge>
+                                                <Badge variant="secondary" className="text-sm font-mono font-bold h-6 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 shadow-sm px-2">{c.candidate_id}</Badge>
                                                 {isExisting && (
                                                     <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-none text-[10px] font-bold h-5 animate-in fade-in slide-in-from-left-1">
                                                         Pipeline Active

@@ -49,14 +49,42 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
     // 1. Validation & Pre-processing (Identify who needs an ID)
     const validRowsToProcess: { name: string, linkedin: string, rowIdx: number }[] = [];
 
-    // Fetch existing candidates for duplicate checking
-    const { data: existingCandidates, error: fetchError } = await (supabase
-        .from('Candidate Profile' as any)
-        .select('candidate_id, name, linkedin') as any);
+    // 1. Validation & Pre-processing
+    // Extract Names and LinkedIns for targeted DB Query (Avoid fetching entire DB)
+    const allNames = rows.map(r => {
+        const val = r['Name'] || r['name'] || Object.keys(r).find(k => k.trim().toLowerCase() === 'name') ? r[Object.keys(r).find(k => k.trim().toLowerCase() === 'name')!] : '';
+        return normalizeName(val || "");
+    }).filter(n => n.length > 0);
 
-    if (fetchError) {
-        console.error("Detailed Fetch Error:", fetchError);
-        return { success: false, error: "Failed to fetch existing candidates: " + fetchError.message };
+    const allLinkedIns = rows.map(r => {
+        const val = r['LinkedIn'] || r['linkedin'] || Object.keys(r).find(k => k.trim().toLowerCase().includes('linkedin')) ? r[Object.keys(r).find(k => k.trim().toLowerCase().includes('linkedin'))!] : '';
+        return normalizeLinkedIn(val || "");
+    }).filter(l => l.length > 0 && l.toLowerCase().includes("linkedin"));
+
+    // Fetch ONLY relevant existing candidates
+    let existingCandidates: any[] = [];
+    if (allNames.length > 0 || allLinkedIns.length > 0) {
+        // Query by Name
+        if (allNames.length > 0) {
+            const { data: nameMatches } = await supabase
+                .from('Candidate Profile' as any)
+                .select('candidate_id, name, linkedin')
+                .in('name', allNames);
+            if (nameMatches) existingCandidates.push(...nameMatches);
+        }
+
+        // Query by LinkedIn
+        if (allLinkedIns.length > 0) {
+            const { data: linkedinMatches } = await supabase
+                .from('Candidate Profile' as any)
+                .select('candidate_id, name, linkedin')
+                .in('linkedin', allLinkedIns);
+            if (linkedinMatches) existingCandidates.push(...linkedinMatches);
+        }
+
+        // Dedup results based on ID and Sort by ID ASC to prioritize oldest candidate
+        existingCandidates = Array.from(new Map(existingCandidates.map(c => [c.candidate_id, c])).values());
+        existingCandidates.sort((a, b) => a.candidate_id.localeCompare(b.candidate_id));
     }
 
     // Process each row to determine status
@@ -80,8 +108,8 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
             continue;
         }
 
-        // Duplicate Check (DB)
-        const duplicate = existingCandidates?.find(c => {
+        // Duplicate Check (DB) - Fix implicit any type
+        const duplicate = existingCandidates?.find((c: any) => {
             return normalizeName(c.name || "").toLowerCase() === name.toLowerCase() ||
                 normalizeLinkedIn(c.linkedin || "").toLowerCase() === linkedin.toLowerCase();
         });
@@ -99,6 +127,26 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
         if (inBatchDuplicate) {
             status = "Duplicate found";
             note = "Found duplicate in batch";
+            logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderEmail });
+            continue;
+        }
+
+        // Duplicate Check (Active Uploads)
+        // Fetching all currently processing items to avoid complex OR query construction for every row
+        // This is safe as the number of simultaneous active uploads is expected to be reasonable.
+        const { data: activeLogs } = await supabase
+            .from('csv_upload_logs')
+            .select('name, linkedin')
+            .in('status', ['Scraping', 'Processing', 'PENDING']);
+
+        const isProcessing = activeLogs?.some((log: any) =>
+            (log.name && normalizeName(log.name).toLowerCase() === name.toLowerCase()) ||
+            (log.linkedin && normalizeLinkedIn(log.linkedin).toLowerCase() === linkedin.toLowerCase())
+        );
+
+        if (isProcessing) {
+            status = "Duplicate found";
+            note = "Already in processing queue (Scraping)";
             logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderEmail });
             continue;
         }

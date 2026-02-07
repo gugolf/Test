@@ -30,6 +30,28 @@ export async function POST(req: Request) {
         if (filters?.ageMin) profileQuery = profileQuery.gte('age', filters.ageMin);
         if (filters?.ageMax) profileQuery = profileQuery.lte('age', filters.ageMax);
 
+        // --- Aging Group Filter ---
+        if (filters?.agingGroup) {
+            const now = new Date();
+            const d30 = new Date(now); d30.setDate(d30.getDate() - 30);
+            const d90 = new Date(now); d90.setDate(d90.getDate() - 90);
+            const d180 = new Date(now); d180.setDate(d180.getDate() - 180);
+
+            // Migration completed: modify_date is now ISO 8601 string.
+            // Direct comparison works correctly.
+            const field = 'modify_date';
+
+            if (filters.agingGroup === 'fresh') {
+                profileQuery = profileQuery.gt(field, d30.toISOString());
+            } else if (filters.agingGroup === '1-3m') {
+                profileQuery = profileQuery.lte(field, d30.toISOString()).gt(field, d90.toISOString());
+            } else if (filters.agingGroup === '4-6m') {
+                profileQuery = profileQuery.lte(field, d90.toISOString()).gt(field, d180.toISOString());
+            } else if (filters.agingGroup === '6m+') {
+                profileQuery = profileQuery.lte(field, d180.toISOString());
+            }
+        }
+
         // --- STRATEGY SWITCH ---
 
         if (hasExperienceFilters) {

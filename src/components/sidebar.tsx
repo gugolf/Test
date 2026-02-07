@@ -13,7 +13,8 @@ import {
     Plus,
     BarChart3,
     Webhook,
-    Network
+    Network,
+    History as HistoryIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -27,6 +28,7 @@ const menuItems = [
     { name: "Job Requisitions", icon: Briefcase, path: "/requisitions" },
     { name: "Settings", icon: Settings, path: "/settings" },
     { name: "n8n Integration", icon: Webhook, path: "/admin/n8n" },
+    { name: "Data Aging Report", icon: HistoryIcon, path: "/reports/aging" },
 ];
 
 export function Sidebar() {
