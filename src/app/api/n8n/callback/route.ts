@@ -187,14 +187,14 @@ export async function POST(req: NextRequest) {
                 return {
                     candidate_id: newCandidateId,
                     name: candidateName,
-                    company: companyName,
-                    // company_name_text: companyName, // Removed: Not in user mapping for candidate_experience
+                    company: companyName, // Verified column: 'company'
+                    // company_name_text: companyName, // Removed: Not in DB
                     position: exp.Position || exp.position || "Unknown Position",
                     start_date: parseDate(startDateStr),
                     end_date: parseDate(endDateStr),
                     work_location: location,
-                    // is_current: ..., // Removed: Not in user mapping
-                    // row_status: 'Active' // Removed: Not in user mapping
+                    is_current_job: (endDateStr?.toLowerCase() === 'present') || false, // Verified column: 'is_current_job'
+                    row_status: 'Active' // Verified column: 'row_status'
                 };
             });
 
@@ -202,7 +202,7 @@ export async function POST(req: NextRequest) {
 
             if (validExpData.length > 0) {
                 const { error: insertExpError } = await supabase
-                    .from('candidate_experience') // Fixed: Singular table name per user mapping
+                    .from('candidate_experiences') // Fixed: Plural table name confirmed by schema check
                     .insert(validExpData as any);
 
                 if (insertExpError) {
