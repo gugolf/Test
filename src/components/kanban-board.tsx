@@ -18,6 +18,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { CandidateAvatar } from "@/components/candidate-avatar";
 
 interface KanbanBoardProps {
     jrId: string;
@@ -147,13 +148,15 @@ export function KanbanBoard({ jrId }: KanbanBoardProps) {
                                     >
                                         <div className="flex justify-between items-start mb-2 group-hover:translate-x-1 transition-transform">
                                             <div className="flex items-center gap-2.5">
-                                                <Avatar className="h-10 w-10 border ring-1 ring-background shadow-sm hover:scale-110 transition-transform">
-                                                    <AvatarImage src={c.candidate_image_url} />
-                                                    <AvatarFallback className="text-sm font-black bg-indigo-50 text-primary">{c.candidate_name?.charAt(0)}</AvatarFallback>
-                                                </Avatar>
+                                                <CandidateAvatar
+                                                    src={c.candidate_image_url}
+                                                    name={c.candidate_name}
+                                                    className="h-12 w-12 border-2 border-white ring-1 ring-slate-100 shadow-sm hover:scale-105 transition-transform"
+                                                    fallbackClassName="text-sm"
+                                                />
                                                 <div className="flex flex-col">
-                                                    <span className="text-sm font-black truncate max-w-[130px] leading-tight group-hover:text-primary transition-colors">{c.candidate_name}</span>
-                                                    <span className="text-[10px] font-bold text-slate-400 truncate max-w-[130px]">{c.candidate_current_position}</span>
+                                                    <span className="text-base font-black truncate max-w-[130px] leading-tight group-hover:text-primary transition-colors text-slate-900">{c.candidate_name}</span>
+                                                    <span className="text-[11px] font-bold text-slate-500 truncate max-w-[130px]">{c.candidate_current_position}</span>
                                                 </div>
                                             </div>
                                             <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 -mr-1 text-muted-foreground hover:text-foreground">
@@ -190,7 +193,7 @@ export function KanbanBoard({ jrId }: KanbanBoardProps) {
                                                 </DropdownMenu>
                                             </div>
                                             <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-bold text-slate-300">
+                                                <span className="text-[12px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 italic">
                                                     ID: {c.candidate_id}
                                                 </span>
                                                 <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">

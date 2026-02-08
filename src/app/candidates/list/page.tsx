@@ -38,8 +38,9 @@ import {
     CommandList,
     CommandSeparator,
 } from "@/components/ui/command";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
 import { cn } from "@/lib/utils";
+import { CandidateAvatar } from "@/components/candidate-avatar";
 
 // Types
 interface Candidate {
@@ -111,10 +112,11 @@ export default function CandidateListPage() {
         jobFunctions: string[];
         statuses: string[];
         genders: string[];
+        companies: string[]; // Added
         mapping: any[]; // { country, company, industry }
     }>({
         countries: [], industries: [], groups: [], positions: [],
-        jobGroupings: [], jobFunctions: [], statuses: [], genders: [], mapping: []
+        jobGroupings: [], jobFunctions: [], statuses: [], genders: [], companies: [], mapping: []
     });
 
     // 1. Fetch Options
@@ -132,6 +134,7 @@ export default function CandidateListPage() {
                     jobFunctions: data.jobFunctions || [],
                     statuses: data.statuses || [],
                     genders: data.genders || [],
+                    companies: data.companies || [],
                     mapping: data.mapping || []
                 });
             } catch (error) {
@@ -143,6 +146,11 @@ export default function CandidateListPage() {
 
     // 2. Compute Available Companies (Cascading Logic)
     const availableCompanies = useMemo(() => {
+        // If no dependent filters (Country/Industry/Group) are selected, return the full Master List
+        if (filters.countries.length === 0 && filters.industries.length === 0 && filters.groups.length === 0) {
+            return options.companies || [];
+        }
+
         if (!options.mapping || options.mapping.length === 0) return [];
 
         let filtered = options.mapping;
@@ -158,9 +166,13 @@ export default function CandidateListPage() {
         }
 
         // Extract unique companies
+        // Extract unique companies from the filtered mapping
         const uniqueCompanies = Array.from(new Set(filtered.map((m: any) => m.company))).filter(Boolean) as string[];
+
+        // If the resulting list is smaller than the master list, it means we've filtered down. 
+        // We should merge/check against the master list if needed, but usually the mapping is the restricting factor here.
         return uniqueCompanies.sort();
-    }, [options.mapping, filters.countries, filters.industries]);
+    }, [options.mapping, options.companies, filters.countries, filters.industries, filters.groups]);
 
 
     // 3. Fetch Candidates
@@ -568,24 +580,28 @@ function CandidateRichCard({ candidate }: { candidate: Candidate }) {
                     )}
                 </div>
 
-                <Avatar className="h-16 w-16 border-2 border-background shadow-lg ring-2 ring-secondary/50">
-                    <AvatarImage src={candidate.photo} />
-                    <AvatarFallback className="bg-primary/5 text-primary text-xl font-black">
-                        {candidate.name?.substring(0, 2)?.toUpperCase()}
-                    </AvatarFallback>
-                </Avatar>
+                <CandidateAvatar
+                    src={candidate.photo}
+                    name={candidate.name}
+                    className="h-24 w-24 border-4 border-background shadow-xl ring-2 ring-secondary/50"
+                    fallbackClassName="text-3xl"
+                />
 
                 {/* Profile Age Indicator */}
                 <ProfileAgeIndicator created={candidate.created_date} modified={candidate.modify_date} />
 
                 <div className="flex-1 min-w-0 pt-0.5">
-                    <h3 className="text-lg font-bold truncate text-foreground group-hover:text-primary transition-colors flex items-center gap-2 cursor-pointer" onClick={() => window.location.href = `/candidates/${candidate.candidate_id}`}>
+                    <h3 className="text-xl font-black truncate text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2 cursor-pointer leading-none tracking-tight" onClick={() => window.location.href = `/candidates/${candidate.candidate_id}`}>
                         {candidate.name}
                         <Badge variant="outline" className="ml-2 text-[10px] h-5 hover:bg-primary hover:text-white transition-colors">View Profile &gt;</Badge>
                     </h3>
 
-                    <div className="flex flex-wrap gap-y-1 gap-x-3 mt-2 text-xs font-medium text-muted-foreground">
-                        <span className="flex items-center gap-1"><Badge variant="outline" className="font-mono text-[10px] h-5">{candidate.candidate_id}</Badge></span>
+                    <div className="flex flex-wrap gap-y-1 gap-x-3 mt-3 text-sm font-medium text-muted-foreground items-center">
+                        <span className="flex items-center gap-1">
+                            <Badge variant="secondary" className="font-mono text-[13px] font-black h-6 bg-slate-100 text-slate-600 border border-slate-200">
+                                {candidate.candidate_id}
+                            </Badge>
+                        </span>
                         <span className="flex items-center gap-1">{candidate.nationality || "N/A"}</span>
                         <span className="w-1 h-1 rounded-full bg-border" />
                         <span>{candidate.age ? `${candidate.age} Years` : "Age -"}</span>

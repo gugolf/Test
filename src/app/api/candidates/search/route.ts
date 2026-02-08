@@ -20,8 +20,84 @@ export async function POST(req: Request) {
             .select('*', { count: 'exact' });
 
         // --- APPLY PROFILE FILTERS ---
+        // --- SEARCH LOGIC ---
+        let searchCandidateIds: string[] = [];
+
         if (search) {
+            // 1. Search in Profile (Name, Email, ID)
             profileQuery = profileQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,candidate_id.ilike.%${search}%`);
+
+            // 2. Search in Experiences (Company, Position) - Added per user request
+            // We need to find IDs that match the search term in experiences
+            const { data: expSearchMatches, error: expSearchError } = await adminAuthClient
+                .from('candidate_experiences')
+                .select('candidate_id')
+                .or(`company.ilike.%${search}%,position.ilike.%${search}%`)
+                .limit(5000);
+
+            if (!expSearchError && expSearchMatches && expSearchMatches.length > 0) {
+                const ids = expSearchMatches.map((e: any) => e.candidate_id);
+                // We want to OR this with the profile query. 
+                // However, Supabase .or() works better on columns within the same table.
+                // Mixing OR updates across tables is tricky.
+                // STRATEGY: 
+                // If search finds matches in experiences, we ADD those IDs to the profile query explicitly?
+                // OR logically: (Profile Match) OR (ID in Experience Matches)
+
+                // Let's try combining logic:
+                // Since we can't easily do a cross-table OR in a single .from('Candidate Profile') call efficiently without a join view,
+                // We will collect the IDs from Experience search and use an `.or()` on candidate_id with the profile attributes.
+
+                // Construct OR filter: name ILIKE.. or email ILIKE.. or candidate_id IN (...)
+                // But `candidate_id.in` isn't directly compatible inside an `.or()` string syntax usually.
+
+                // SIMPLER STRATEGY: 
+                // If we found experience matches, we add their IDs to a list.
+                // Then we query Profile where (Name match OR Email match ... OR candidate_id in list)
+
+                // Limitation: .or() string doesn't support an array IN check easily.
+                // Alternative: We fetch matching Profile IDs first? No.
+
+                // Working Approach for OR with external IDs:
+                // We can't easily modify the existing `profileQuery` variable which is a strict builder.
+                // Instead, we might need to modify how we build `profileQuery`.
+
+                searchCandidateIds = ids;
+            }
+        }
+
+        // Apply Search Filter with Experience IDs support
+        if (search) {
+            let orString = `name.ilike.%${search}%,email.ilike.%${search}%,candidate_id.ilike.%${search}%`;
+
+            if (searchCandidateIds.length > 0) {
+                // Creating a massive OR string with IDs is risky if too many.
+                // If IDs < 100, we can do `candidate_id.in.(${ids})`.
+                // If IDs are many, this strategy is hard.
+
+                // Better: If we have experience matches, strict filtering becomes ambiguous.
+                // "Search" usually means Partial Match.
+
+                // Let's try this: 
+                // If we found IDs from experience search, we add `candidate_id.in.(${searchCandidateIds.join(',')})` to the OR group?
+                // Supabase PostgREST: `or=(col.eq.val,col2.in.(val1,val2))`
+
+                // However, safely joining many IDs into a query string is not ideal.
+
+                // Fallback: If exp matches found, we relax the profile query to include them?
+                // or maybe we execute two queries and merge? (Pagination pain)
+
+                // Let's stick effectively to: Filter Profile matching text OR ID is in [ExpMatches].
+                if (searchCandidateIds.length > 0) {
+                    // Note: syntax `candidate_id.in.("id1","id2")`
+                    // We limit to top 100 matches from experience to prevent URL overflow.
+                    const limitedIds = searchCandidateIds.slice(0, 100);
+                    const idList = limitedIds.map(id => `"${id}"`).join(',');
+                    orString += `,candidate_id.in.(${idList})`;
+                }
+            }
+
+            profileQuery = profileQuery.or(orString);
         }
         if (filters?.gender?.length) profileQuery = profileQuery.in('gender', filters.gender);
         if (filters?.status?.length) profileQuery = profileQuery.in('candidate_status', filters.status);

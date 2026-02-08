@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { ArrowLeft, History, MessageSquare, Star, FileText, UserCircle } from "lucide-react";
+import { ArrowLeft, History, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getJRCandidateDetails } from "@/app/actions/jr-candidate-logs";
 import { cn } from "@/lib/utils";
+import { FeedbackSection } from "@/components/feedback-section";
+import { CandidateAvatar } from "@/components/candidate-avatar";
 
 export default async function CandidateLogPage({ params }: { params: Promise<{ jr_candidate_id: string }> }) {
     const { jr_candidate_id } = await params;
@@ -16,33 +18,36 @@ export default async function CandidateLogPage({ params }: { params: Promise<{ j
     }
 
     const { meta, logs, feedback } = data;
-    const candidate = meta.candidates;
+    const candidate = meta.candidate_profile;
 
     return (
         <div className="flex flex-col min-h-screen bg-[#f8fafc]">
             {/* Header */}
-            <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur-md">
-                <div className="container flex h-16 items-center px-8 gap-6 max-w-[1400px] mx-auto">
+            <header className="sticky top-0 z-40 w-full border-b bg-white/95 backdrop-blur-md shadow-sm">
+                <div className="container flex h-24 items-center px-8 gap-8 max-w-[1400px] mx-auto">
                     <Link href="/requisitions/manage">
-                        <Button variant="ghost" size="sm" className="gap-2">
+                        <Button variant="ghost" size="sm" className="gap-2 text-slate-500 hover:text-slate-900">
                             <ArrowLeft className="h-4 w-4" /> Back to JR
                         </Button>
                     </Link>
-                    <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9 border-2 border-indigo-100 ring-2 ring-white">
-                            <AvatarImage src={candidate?.candidate_image_url} />
-                            <AvatarFallback className="bg-indigo-50 text-indigo-700 font-bold">
-                                {candidate?.candidate_name?.[0]}
-                            </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                            <h1 className="text-base font-black text-slate-900 leading-tight">
-                                {candidate?.candidate_name}
+                    <div className="flex items-center gap-5">
+                        <CandidateAvatar
+                            src={candidate?.photo_url}
+                            name={candidate?.name}
+                            className="h-16 w-16 border-4 border-white shadow-md ring-2 ring-indigo-50"
+                            fallbackClassName="text-xl"
+                        />
+                        <div className="flex flex-col gap-1">
+                            <h1 className="text-2xl font-black text-slate-900 leading-none tracking-tight">
+                                {candidate?.name}
                             </h1>
-                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                                <span>JR_ID: {meta.jr_id}</span>
-                                <span>•</span>
-                                <span>Candidate ID: {meta.candidate_id}</span>
+                            <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600 border border-slate-200">
+                                    JR: {meta.jr_id}
+                                </span>
+                                <span className="bg-indigo-50 px-2 py-0.5 rounded text-indigo-700 border border-indigo-100 font-mono text-sm">
+                                    ID: {meta.candidate_id}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -84,54 +89,11 @@ export default async function CandidateLogPage({ params }: { params: Promise<{ j
                         </Card>
 
                         {/* Interview Feedback Section */}
-                        <div className="space-y-4">
-                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2 pl-1">
-                                <Star className="h-4 w-4" /> Interview Feedback
-                            </h2>
-                            {feedback.length === 0 ? (
-                                <div className="bg-white rounded-2xl p-12 border border-dashed border-slate-200 text-center">
-                                    <div className="bg-slate-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <MessageSquare className="h-6 w-6 text-slate-300" />
-                                    </div>
-                                    <p className="text-sm text-slate-400 font-bold">No interview feedback submitted yet.</p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {feedback.map((f: any) => (
-                                        <Card key={f.feedback_id} className="rounded-2xl border-none shadow-sm shadow-indigo-100 hover:shadow-md transition-shadow">
-                                            <CardHeader className="pb-3 border-b border-slate-50">
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] font-black uppercase text-indigo-500 tracking-wider">
-                                                            {f.Interviewer_type || "Interview"}
-                                                        </span>
-                                                        <span className="font-black text-slate-900 leading-tight">{f.Interviewer_name}</span>
-                                                    </div>
-                                                    <div className="bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1 flex items-center gap-1">
-                                                        <Star className="h-3 w-3 fill-current" />
-                                                        <span className="text-xs font-black">{f.rating_score || "-"}</span>
-                                                    </div>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent className="pt-4 space-y-3">
-                                                <p className="text-[13px] text-slate-600 font-medium leading-relaxed italic">
-                                                    "{f.feedback_text}"
-                                                </p>
-                                                <div className="flex justify-between items-center pt-2">
-                                                    <span className="text-[10px] font-bold text-slate-400">{f.interview_date}</span>
-                                                    <Badge variant="outline" className={cn(
-                                                        "text-[9px] font-black uppercase tracking-widest",
-                                                        f.overall_recommendation === 'Recommend' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
-                                                    )}>
-                                                        {f.overall_recommendation}
-                                                    </Badge>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        <FeedbackSection
+                            jrCandidateId={meta.jr_candidate_id || jr_candidate_id}
+                            candidateName={candidate?.name}
+                            feedback={feedback}
+                        />
                     </div>
 
                     {/* Right Column: Status Timeline */}

@@ -6,22 +6,38 @@ export async function getJRCandidateDetails(jrCandidateId: string) {
     const supabase = adminAuthClient;
 
     // 1. Get JR Candidate Meta & Logs
-    const { data: meta, error: metaError } = await (supabase as any)
+    // 1. Get JR Candidate Meta
+    const { data: jrCandidate, error: jrError } = await (supabase as any)
         .from('jr_candidates')
-        .select(`
-            *,
-            candidates:candidate_id (
-                candidate_name,
-                candidate_image_url
-            )
-        `)
+        .select('*')
         .eq('jr_candidate_id', jrCandidateId)
         .single();
 
-    if (metaError || !meta) {
-        console.error("Error fetching JR candidate meta:", metaError);
+    if (jrError || !jrCandidate) {
+        console.error("Error fetching JR candidate:", jrError);
         return null;
     }
+
+    // 2. Get Candidate Profile (Manual Join due to missing FK and Table Name space)
+    const { data: candidateProfile, error: profileError } = await (supabase as any)
+        .from('Candidate Profile')
+        .select('name, photo')
+        .eq('candidate_id', jrCandidate.candidate_id)
+        .single();
+
+    if (profileError) {
+        console.error("Error fetching Candidate Profile:", profileError);
+        // Continue without profile if error, or handle as needed. 
+        // For now, attaching what we have.
+    }
+
+    const meta = {
+        ...jrCandidate,
+        candidate_profile: {
+            name: candidateProfile?.name,
+            photo_url: candidateProfile?.photo // 'photo' is the column name from list_tables, mapped to photo_url for frontend
+        }
+    };
 
     // 2. Get Logs
     const { data: logs, error: logsError } = await (supabase as any)

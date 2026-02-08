@@ -29,6 +29,36 @@ export async function GET() {
             console.error("Error fetching profile filters:", profError);
         }
 
+        // 3. Fetch from 'company_master' (Added per user request)
+        // Loop to fetch all companies because Supabase limits to 1000 rows
+        let allCompanies: any[] = [];
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        while (hasMore && allCompanies.length < 20000) {
+            const { data: chunk, error: companyError } = await adminAuthClient
+                .from('company_master')
+                .select('company_master')
+                .order('company_master', { ascending: true })
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (companyError) {
+                console.error("Error fetching company master page", page, companyError);
+                break;
+            }
+
+            if (chunk && chunk.length > 0) {
+                allCompanies = allCompanies.concat(chunk);
+                if (chunk.length < pageSize) {
+                    hasMore = false;
+                }
+                page++;
+            } else {
+                hasMore = false;
+            }
+        }
+
         // Helper to extract unique sorted values
         const getUnique = (data: any[] | null, key: string) => {
             if (!data) return [];
@@ -37,7 +67,7 @@ export async function GET() {
 
         const response = {
             // From candidate_experiences
-            companies: getUnique(expData, 'company'),
+            // companies: getUnique(expData, 'company'), // REMOVED: Now handled below using company_master
             positions: getUnique(expData, 'position'), // Requested Position Filter
             countries: getUnique(expData, 'country'),
             industries: getUnique(expData, 'company_industry'),
@@ -55,7 +85,12 @@ export async function GET() {
                 company: e.company,
                 industry: e.company_industry,
                 group: e.company_group
-            })) || []
+            })) || [],
+
+            // Use company_master if available, otherwise fallback to experiences
+            companies: allCompanies && allCompanies.length > 0
+                ? getUnique(allCompanies, 'company_master')
+                : getUnique(expData, 'company')
         };
 
         return NextResponse.json(response);

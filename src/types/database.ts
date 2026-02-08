@@ -117,12 +117,16 @@ export interface Database {
             }
             interview_feedback: {
                 Row: {
-                    feedback_id: string
+                    feedback_id: number
                     jr_candidate_id: string
-                    interviewer_id: string
-                    rating: number
-                    comments: string
-                    created_at: string
+                    interview_date: string | null
+                    Interviewer_type: string | null // 'Recruiter' | 'CG CPO' | 'BU CPO' | 'Hiring Manager'
+                    Interviewer_name: string | null
+                    rating_score: number | null
+                    overall_recommendation: string | null // 'Recommend' | 'Not Recommend' | etc.
+                    feedback_text: string | null
+                    feedback_file: string | null
+                    created_at?: string
                 }
             }
         }

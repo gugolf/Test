@@ -16,7 +16,7 @@ import {
     UserMinus,
     Copy,
     Trash2,
-    CheckSquare,
+
     Search,
     Filter,
     ChevronDown,
@@ -50,6 +50,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
+import { AddFeedbackDialog } from "@/components/add-feedback-dialog";
+import { CandidateAvatar } from "@/components/candidate-avatar";
 
 interface CandidateListProps {
     jrId: string;
@@ -64,6 +66,12 @@ export function CandidateList({ jrId }: CandidateListProps) {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [statusOptions, setStatusOptions] = useState<any[]>([]);
     const [allJRs, setAllJRs] = useState<any[]>([]);
+
+
+
+    // Feedback Dialog State
+    const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+    const [feedbackCandidate, setFeedbackCandidate] = useState<{ id: string, name: string } | null>(null);
 
     useEffect(() => {
         async function load() {
@@ -439,21 +447,23 @@ export function CandidateList({ jrId }: CandidateListProps) {
                                         </div>
                                     </td>
                                     <td className="px-4 py-4">
-                                        <Avatar className="h-10 w-10 ring-2 ring-white shadow-md transition-transform hover:scale-110">
-                                            <AvatarImage src={c.candidate_image_url} />
-                                            <AvatarFallback className="bg-indigo-50 text-primary text-[12px] font-black">{c.candidate_name?.charAt(0)}</AvatarFallback>
-                                        </Avatar>
+                                        <CandidateAvatar
+                                            src={c.candidate_image_url}
+                                            name={c.candidate_name}
+                                            className="h-14 w-14 ring-4 ring-white shadow-lg transition-transform hover:scale-105 border-2 border-slate-100"
+                                            fallbackClassName="text-lg"
+                                        />
                                     </td>
                                     <td className="px-4 py-4">
                                         <Link href={`/candidates/${c.candidate_id}`}>
-                                            <span className="font-mono text-[11px] font-black py-1 px-2.5 bg-slate-100 rounded-lg text-slate-500 border border-slate-200 shadow-sm hover:text-indigo-600 cursor-pointer underline decoration-dotted underline-offset-4">
+                                            <span className="font-mono text-[13px] font-black py-1 px-2.5 bg-indigo-50 rounded-lg text-indigo-700 border border-indigo-100 shadow-sm hover:bg-indigo-100 transition-colors cursor-pointer">
                                                 {c.candidate_id}
                                             </span>
                                         </Link>
                                     </td>
                                     <td className="px-4 py-4">
                                         <div className="flex flex-col">
-                                            <span className="font-black text-[15px] text-slate-800 hover:text-primary cursor-pointer transition-colors leading-tight">
+                                            <span className="font-black text-lg text-slate-900 hover:text-primary cursor-pointer transition-colors leading-none tracking-tight">
                                                 {c.candidate_name}
                                             </span>
                                             <span className="text-[11px] font-bold text-slate-400 mt-0.5 truncate max-w-[200px]">
@@ -504,7 +514,13 @@ export function CandidateList({ jrId }: CandidateListProps) {
                                                         <UserCircle2 className="mr-2 h-4 w-4 text-slate-400 group-hover:text-primary" /> View Global Profile
                                                     </DropdownMenuItem>
                                                 </Link>
-                                                <DropdownMenuItem className="py-2.5 font-bold text-xs cursor-pointer rounded-lg mx-1">
+                                                <DropdownMenuItem
+                                                    className="py-2.5 font-bold text-xs cursor-pointer rounded-lg mx-1"
+                                                    onClick={() => {
+                                                        setFeedbackCandidate({ id: c.id, name: c.candidate_name || "Unknown" });
+                                                        setIsFeedbackOpen(true);
+                                                    }}
+                                                >
                                                     <MessageSquare className="mr-2 h-4 w-4 text-primary" /> Add Feedback
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem className="py-2.5 font-bold text-xs cursor-pointer rounded-lg mx-1">
@@ -526,6 +542,19 @@ export function CandidateList({ jrId }: CandidateListProps) {
                     </tbody>
                 </table>
             </CardContent>
+
+            {feedbackCandidate && (
+                <AddFeedbackDialog
+                    open={isFeedbackOpen}
+                    onOpenChange={setIsFeedbackOpen}
+                    jrCandidateId={feedbackCandidate.id}
+                    candidateName={feedbackCandidate.name}
+                    onSuccess={() => {
+                        // Optionally refresh list or analytics? 
+                        // Feedback doesn't change list status usually, but maybe good to know
+                    }}
+                />
+            )}
         </Card>
     );
 }
