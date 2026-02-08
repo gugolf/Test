@@ -50,20 +50,21 @@ export async function checkDuplicateCandidate(name: string, linkedin: string): P
         return { isDuplicate: false, candidateId: null };
     }
 
-    // Optimized: Fetch only potential matches using ILIKE
-    // This avoids fetching the entire database and hitting the 1000-row limit.
-    const nameQuery = `name.ilike.%${name}%`;
-    // Note: ilike with % matches substrings, but here we want close matches. 
-    // Better: name.ilike.${name} (exact match case-insensitive)
-    // But since we normalize/clean inputs, exact match might miss "Manish  Sharma" (spaces).
-    // Let's use flexible OR query.
+    // Optimized: Search by both Raw and Normalized name to handle accents better in SQL
+    // e.g. Input: "Thïkàmpôrn" -> Norm: "thikamporn" -> DB might have "Thikamporn"
+    // OR Input: "Thikamporn" -> DB might have "Thïkàmpôrn"
 
     let query = supabase
         .from('Candidate Profile')
         .select('candidate_id, name, linkedin');
 
     const conditions = [];
-    if (name) conditions.push(`name.ilike.${name}`);
+    if (name) {
+        conditions.push(`name.ilike.%${name}%`);
+        if (normName && normName !== name.toLowerCase()) {
+            conditions.push(`name.ilike.%${normName}%`);
+        }
+    }
     if (linkedin) conditions.push(`linkedin.ilike.${linkedin}`);
 
     // Also try to match without middle name or slightly fuzzy? 

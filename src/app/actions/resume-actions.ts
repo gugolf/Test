@@ -67,10 +67,11 @@ export async function getPendingUploads() {
     }
 }
 
-export async function updateUploadStatus(id: string, status: string, note?: string) {
+export async function updateUploadStatus(id: string, status: string, note?: string, candidateId?: string) {
     try {
         const updateData: any = { status };
-        if (note) updateData.note = note; // Assuming 'note' column exists or we might need to add it? 
+        if (note) updateData.note = note;
+        if (candidateId) updateData.candidate_id = candidateId;
         // Wait, user schema didn't explicitly ask for 'note' in the CREATE TABLE SQL provided earlier?
         // Let's check the SQL provided in plan:
         // status TEXT DEFAULT 'pending', candidate_id TEXT ...

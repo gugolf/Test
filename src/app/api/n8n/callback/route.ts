@@ -69,9 +69,12 @@ export async function POST(req: NextRequest) {
         if (isDuplicate && existingId) {
             console.log(`Duplicate found (${reason}): ${existingId}`);
             // Update Duplicate Status
+            // Update Duplicate Status with ID
             await updateUploadStatus(
                 upload_id,
-                `Found duplicate with ${existingId} ${candidateName.substring(0, 20)}...`
+                `Found duplicate with ${existingId} ${candidateName.substring(0, 20)}...`,
+                undefined, // note
+                existingId // candidateId
             );
 
             return NextResponse.json({
