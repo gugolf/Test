@@ -153,10 +153,36 @@ export async function POST(req: NextRequest) {
         // 4. Insert Experiences
         const experienceList = Experience || [];
 
+        // Helper to convert DD/MM/YYYY to YYYY-MM-DD
+        const parseDate = (dateStr: string | null) => {
+            if (!dateStr || typeof dateStr !== 'string') return null;
+            if (dateStr.toLowerCase() === 'present') return null;
+
+            // Try explicit DD/MM/YYYY format
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                const [day, month, year] = parts;
+                // Ensure valid numbers
+                if (!isNaN(Number(day)) && !isNaN(Number(month)) && !isNaN(Number(year))) {
+                    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                }
+            }
+
+            // Fallback for other formats or already ISO
+            const parsed = Date.parse(dateStr);
+            if (!isNaN(parsed)) {
+                return new Date(parsed).toISOString().split('T')[0];
+            }
+
+            return null; // Invalid date
+        };
+
         if (Array.isArray(experienceList) && experienceList.length > 0) {
             const expData = experienceList.map((exp: any) => {
                 const companyName = exp.Company || exp.company || "Unknown Company";
                 const location = exp.Work_locator || exp.work_location || exp.location || null;
+                const startDateStr = exp.StartDate || null;
+                const endDateStr = exp.EndDate || exp.endDate || null;
 
                 return {
                     candidate_id: newCandidateId,
@@ -164,10 +190,10 @@ export async function POST(req: NextRequest) {
                     company: companyName,
                     company_name_text: companyName, // likely needed for DB compatibility
                     position: exp.Position || exp.position || "Unknown Position",
-                    start_date: exp.StartDate || null,
-                    end_date: exp.EndDate || null,
+                    start_date: parseDate(startDateStr),
+                    end_date: parseDate(endDateStr),
                     work_location: location, // Mapped from user screenshot
-                    is_current: (exp.EndDate?.toLowerCase() === 'present' || exp.endDate?.toLowerCase() === 'present') || false,
+                    is_current: (endDateStr?.toLowerCase() === 'present') || false,
                     row_status: 'Active'
                 };
             });
