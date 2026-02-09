@@ -37,6 +37,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { EditPlacementDialog } from "@/components/edit-placement-dialog";
 import { Pencil } from "lucide-react";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 export default function PlacementsPage() {
     const [records, setRecords] = useState<any[]>([]);
@@ -95,12 +96,12 @@ export default function PlacementsPage() {
             {/* Header Area */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
-                    <button
-                        onClick={() => router.push('/requisitions')}
-                        className="flex items-center text-xs font-bold text-slate-400 hover:text-primary transition-colors uppercase tracking-widest mb-2"
-                    >
-                        <ArrowLeft className="w-3 h-3 mr-1" /> Back to Menu
-                    </button>
+                    <AtsBreadcrumb
+                        items={[
+                            { label: 'Job Requisition Menu', href: '/requisitions' },
+                            { label: 'Successful Placement Table' }
+                        ]}
+                    />
                     <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
                         <div className="p-2 bg-green-100 rounded-xl">
                             <CheckCircle2 className="w-8 h-8 text-green-600" />

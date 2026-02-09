@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils";
 import { BackButton, EditButton, AddPrescreenDialog, DeleteCandidateDialog } from "@/components/candidate-client-actions";
 import { AddExperienceDialog, DeleteExperienceButton } from "@/components/experience-dialog";
 import { JobStatusDetailDialog } from "@/components/job-status-dialog";
-import { Checkbox } from "@/components/ui/checkbox"; // Added for completeness if needed elsewhere
+import { Checkbox } from "@/components/ui/checkbox";
+import { ResumeManager } from "@/components/resume-manager";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 export default function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = React.use(params);
@@ -63,9 +65,14 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         <div className="container mx-auto max-w-6xl py-8 space-y-8 animate-in fade-in duration-500">
 
             {/* --- TOP BAR --- */}
-            <div className="flex items-center justify-between mb-2">
-                <BackButton />
-                <div className="text-xs font-mono text-muted-foreground opacity-50">ID: {candidate.candidate_id}</div>
+            <div className="flex flex-col mb-2">
+                <AtsBreadcrumb
+                    items={[
+                        { label: 'Candidates', href: '/candidates' },
+                        { label: candidate.name || 'Candidate Detail' }
+                    ]}
+                    action={<div className="text-xs font-mono text-muted-foreground opacity-50">ID: {candidate.candidate_id}</div>}
+                />
             </div>
 
             {/* --- HEADER HERO --- */}
@@ -110,9 +117,14 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
                     <div className="flex flex-col gap-3 items-end">
                         <div className="flex gap-2">
-                            <Button variant="outline" className="gap-2 border-border shadow-sm">
-                                <Download className="h-4 w-4" /> Resume
-                            </Button>
+                            <ResumeManager
+                                candidateId={candidate.candidate_id}
+                                resumeUrl={candidate.resume_url}
+                                onUpdate={() => {
+                                    // Refresh logic - component handles router.refresh()
+                                    // We might want to re-fetch here if needed, but router.refresh should handle server component updates or next fetch
+                                }}
+                            />
                             <EditButton id={candidate.candidate_id} />
                         </div>
                         {/* Delete Button */}
@@ -180,7 +192,9 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                                         <div className="flex-1 overflow-hidden">
                                             <p className="text-sm font-medium truncate" title={doc.document_name}>{doc.document_name}</p>
                                         </div>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8"><Download className="h-4 w-4 text-muted-foreground" /></Button>
+                                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8"><Download className="h-4 w-4 text-muted-foreground" /></Button>
+                                        </a>
                                     </div>
                                 ))
                             ) : (

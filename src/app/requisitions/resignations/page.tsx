@@ -24,11 +24,17 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
+import { Button } from "@/components/ui/button";
+import { Pencil } from "lucide-react";
+import { EditResignationDialog } from "@/components/edit-resignation-dialog";
 
 export default function ResignationsPage() {
     const [records, setRecords] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [selectedRecord, setSelectedRecord] = useState<any>(null);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
     const router = useRouter();
 
@@ -54,12 +60,12 @@ export default function ResignationsPage() {
             {/* Header Area */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
-                    <button
-                        onClick={() => router.push('/requisitions')}
-                        className="flex items-center text-xs font-bold text-slate-400 hover:text-primary transition-colors uppercase tracking-widest mb-2"
-                    >
-                        <ArrowLeft className="w-3 h-3 mr-1" /> Back to Menu
-                    </button>
+                    <AtsBreadcrumb
+                        items={[
+                            { label: 'Job Requisition Menu', href: '/requisitions' },
+                            { label: 'Resignation Table' }
+                        ]}
+                    />
                     <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
                         <div className="p-2 bg-red-100 rounded-xl">
                             <LogOut className="w-8 h-8 text-red-600" />
@@ -105,14 +111,15 @@ export default function ResignationsPage() {
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Business Unit</TableHead>
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Resigned Date</TableHead>
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Reason</TableHead>
-                                    <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6 pr-8">Notes</TableHead>
+                                    <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Notes</TableHead>
+                                    <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6 pr-8 text-right">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {loading ? (
-                                    <TableRow><TableCell colSpan={5} className="h-64 text-center text-slate-400 font-bold uppercase tracking-widest">Loading Records...</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={6} className="h-64 text-center text-slate-400 font-bold uppercase tracking-widest">Loading Records...</TableCell></TableRow>
                                 ) : filteredRecords.length === 0 ? (
-                                    <TableRow><TableCell colSpan={5} className="h-64 text-center text-slate-400 font-bold uppercase tracking-widest">No resignation history found</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={6} className="h-64 text-center text-slate-400 font-bold uppercase tracking-widest">No resignation history found</TableCell></TableRow>
                                 ) : filteredRecords.map((r) => (
                                     <TableRow key={r.employment_record_id} className="group hover:bg-slate-50/50 transition-colors border-slate-100">
                                         <TableCell className="py-6 pl-8">
@@ -147,13 +154,26 @@ export default function ResignationsPage() {
                                                 </Badge>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="pr-8">
+                                        <TableCell>
                                             <div className="flex items-start gap-2 max-w-[200px]">
                                                 <ScrollText className="w-3.5 h-3.5 text-slate-300 mt-0.5 shrink-0" />
                                                 <p className="text-xs text-slate-500 font-medium line-clamp-2">
                                                     {r.resign_note || 'No notes added'}
                                                 </p>
                                             </div>
+                                        </TableCell>
+                                        <TableCell className="pr-8 text-right">
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => {
+                                                    setSelectedRecord(r);
+                                                    setIsEditDialogOpen(true);
+                                                }}
+                                                className="border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 rounded-xl transition-all h-8 w-8"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -162,6 +182,15 @@ export default function ResignationsPage() {
                     </div>
                 </CardContent>
             </Card>
+            <EditResignationDialog
+                open={isEditDialogOpen}
+                onOpenChange={setIsEditDialogOpen}
+                initialData={selectedRecord}
+                onSuccess={() => {
+                    loadRecords();
+                    setSelectedRecord(null);
+                }}
+            />
         </div>
     );
 }

@@ -41,6 +41,9 @@ import {
 
 import { cn } from "@/lib/utils";
 import { CandidateAvatar } from "@/components/candidate-avatar";
+import { AsyncFilterMultiSelect } from "@/components/ui/async-filter-multi-select";
+import { SmartCandidateSearch } from "@/components/smart-candidate-search"; // [NEW] Smart Search
+import { searchCompanies, searchPositions } from "@/app/actions/candidate-filters";
 
 // Types
 interface Candidate {
@@ -107,19 +110,19 @@ export default function CandidateListPage() {
         countries: string[];
         industries: string[];
         groups: string[];
-        positions: string[];
+        // positions: string[]; // Removed, now async
         jobGroupings: string[];
         jobFunctions: string[];
         statuses: string[];
         genders: string[];
-        companies: string[]; // Added
-        mapping: any[]; // { country, company, industry }
+        // companies: string[]; // Removed, now async
+        // mapping: any[]; // Removed heavy mapping
     }>({
-        countries: [], industries: [], groups: [], positions: [],
-        jobGroupings: [], jobFunctions: [], statuses: [], genders: [], companies: [], mapping: []
+        countries: [], industries: [], groups: [],
+        jobGroupings: [], jobFunctions: [], statuses: [], genders: []
     });
 
-    // 1. Fetch Options
+    // 1. Fetch Options (Only small lists)
     useEffect(() => {
         const fetchOptions = async () => {
             try {
@@ -129,13 +132,13 @@ export default function CandidateListPage() {
                     countries: data.countries || [],
                     industries: data.industries || [],
                     groups: data.groups || [],
-                    positions: data.positions || [],
+                    // positions: data.positions || [],
                     jobGroupings: data.jobGroupings || [],
                     jobFunctions: data.jobFunctions || [],
                     statuses: data.statuses || [],
                     genders: data.genders || [],
-                    companies: data.companies || [],
-                    mapping: data.mapping || []
+                    // companies: data.companies || [],
+                    // mapping: data.mapping || []
                 });
             } catch (error) {
                 console.error("Failed to load filters", error);
@@ -144,36 +147,9 @@ export default function CandidateListPage() {
         fetchOptions();
     }, []);
 
-    // 2. Compute Available Companies (Cascading Logic)
-    const availableCompanies = useMemo(() => {
-        // If no dependent filters (Country/Industry/Group) are selected, return the full Master List
-        if (filters.countries.length === 0 && filters.industries.length === 0 && filters.groups.length === 0) {
-            return options.companies || [];
-        }
-
-        if (!options.mapping || options.mapping.length === 0) return [];
-
-        let filtered = options.mapping;
-
-        // Filter by Country
-        if (filters.countries.length > 0) {
-            filtered = filtered.filter((m: any) => filters.countries.includes(m.country));
-        }
-
-        // Filter by Industry
-        if (filters.industries.length > 0) {
-            filtered = filtered.filter((m: any) => filters.industries.includes(m.industry));
-        }
-
-        // Extract unique companies
-        // Extract unique companies from the filtered mapping
-        const uniqueCompanies = Array.from(new Set(filtered.map((m: any) => m.company))).filter(Boolean) as string[];
-
-        // If the resulting list is smaller than the master list, it means we've filtered down. 
-        // We should merge/check against the master list if needed, but usually the mapping is the restricting factor here.
-        return uniqueCompanies.sort();
-    }, [options.mapping, options.companies, filters.countries, filters.industries, filters.groups]);
-
+    // 2. Compute Available Companies (Cascading Logic) - REMOVED for peformance
+    // We now rely on server-side search for companies, maybe passing current filters to context if needed in future
+    // but for now, simple global search for companies is better than crashing the browser.
 
     // 3. Fetch Candidates
     const fetchCandidates = async () => {
@@ -237,7 +213,7 @@ export default function CandidateListPage() {
     // Helper to toggle filter array
     const toggleFilter = (key: keyof typeof filters, value: string) => {
         setFilters(prev => {
-            const current = prev[key] as string[];
+            const current = (prev as any)[key] as string[];
             const updated = current.includes(value)
                 ? current.filter(item => item !== value)
                 : [...current, value];
@@ -259,13 +235,22 @@ export default function CandidateListPage() {
                     </div>
 
                     <div className="flex items-center gap-2 w-full md:w-auto">
-                        <div className="relative flex-1 md:w-64">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search Name, Email, ID..."
-                                className="pl-9 h-9 text-xs"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                        <div className="relative flex-1 md:w-96">
+                            {/* Replaced Input with Smart Search */}
+                            <SmartCandidateSearch
+                                onSearch={(term, type) => {
+                                    if (type === 'global') {
+                                        setSearchTerm(term);
+                                    } else if (type === 'company') {
+                                        toggleFilter('companies', term);
+                                        setSearchTerm(""); // Clear global search if filter applied
+                                    } else if (type === 'position') {
+                                        toggleFilter('positions', term);
+                                        setSearchTerm("");
+                                    }
+                                }}
+                                filters={filters}
+                                placeholder={searchTerm || "Search Name, Email, ID, Company..."}
                             />
                         </div>
                         <Button
@@ -312,17 +297,27 @@ export default function CandidateListPage() {
                     <div className="pt-2 border-t border-dashed animate-in slide-in-from-top-2 fade-in duration-200 space-y-3">
                         <div className="flex flex-wrap gap-2 items-center">
                             {/* Filter Dropdowns using Popover + Command for robustness */}
-                            {/* 1. Position */}
-                            <FilterMultiSelect label="Position" icon={Briefcase} options={options.positions} selected={filters.positions} onChange={(v: string) => toggleFilter('positions', v)} />
 
-                            {/* 2. Company (Dependent) */}
-                            <FilterMultiSelect
-                                label={`Company (${availableCompanies.length})`}
+                            {/* 1. Position (ASYNC) */}
+                            <AsyncFilterMultiSelect
+                                label="Position"
+                                icon={Briefcase}
+                                selected={filters.positions}
+                                onChange={(v: string) => toggleFilter('positions', v)}
+                                fetcher={searchPositions}
+                                placeholder="Search Position..."
+                                filters={filters} // [NEW] Pass context
+                            />
+
+                            {/* 2. Company (ASYNC) */}
+                            <AsyncFilterMultiSelect
+                                label="Company"
                                 icon={Layers}
-                                options={availableCompanies}
                                 selected={filters.companies}
                                 onChange={(v: string) => toggleFilter('companies', v)}
-                                disabled={availableCompanies.length === 0}
+                                fetcher={searchCompanies}
+                                placeholder="Search Company..."
+                                filters={filters} // [NEW] Pass context
                             />
 
                             {/* 3. Gender */}
@@ -367,9 +362,35 @@ export default function CandidateListPage() {
                             {filters.countries.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('countries', c)} color="blue" />)}
                             {filters.industries.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('industries', c)} color="purple" />)}
                             {filters.groups.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('groups', c)} color="orange" />)}
-                            {filters.positions.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('positions', c)} color="pink" />)}
+
+                            {/* Position - Grouped */}
+                            {filters.positions.length <= 5 ? (
+                                filters.positions.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('positions', c)} color="pink" />)
+                            ) : (
+                                <GroupedFilterChip
+                                    label="Positions"
+                                    count={filters.positions.length}
+                                    items={filters.positions}
+                                    onClear={() => setFilters(prev => ({ ...prev, positions: [] }))}
+                                    color="pink"
+                                />
+                            )}
+
                             {filters.jobGroupings.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('jobGroupings', c)} color="orange" />)}
-                            {filters.companies.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('companies', c)} color="indigo" />)}
+
+                            {/* Company - Grouped */}
+                            {filters.companies.length <= 5 ? (
+                                filters.companies.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('companies', c)} color="indigo" />)
+                            ) : (
+                                <GroupedFilterChip
+                                    label="Companies"
+                                    count={filters.companies.length}
+                                    items={filters.companies}
+                                    onClear={() => setFilters(prev => ({ ...prev, companies: [] }))}
+                                    color="indigo"
+                                />
+                            )}
+
                             {filters.statuses.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('statuses', c)} color="emerald" />)}
                             {filters.genders.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('genders', c)} color="cyan" />)}
                             {filters.jobFunctions.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('jobFunctions', c)} color="pink" />)}
@@ -435,7 +456,7 @@ export default function CandidateListPage() {
 
 // --- Components ---
 
-function Chip({ label, onRemove, color }: any) {
+function Chip({ label, onRemove, color, title }: any) {
     const colors: any = {
         blue: "bg-blue-500/10 text-blue-600 border-blue-500/20",
         purple: "bg-purple-500/10 text-purple-600 border-purple-500/20",
@@ -446,12 +467,47 @@ function Chip({ label, onRemove, color }: any) {
         cyan: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
     };
     return (
-        <Badge variant="outline" className={cn("pr-1 gap-1 font-normal transition-all text-[11px]", colors[color] || colors.blue)}>
+        <Badge variant="outline" className={cn("pr-1 gap-1 font-normal transition-all text-[11px]", colors[color] || colors.blue)} title={title}>
             {label}
             <div onClick={onRemove} className="cursor-pointer hover:bg-black/10 rounded-full p-0.5">
                 <X className="h-3 w-3" />
             </div>
         </Badge>
+    );
+}
+
+function GroupedFilterChip({ label, count, items, onClear, color }: any) {
+    const colors: any = {
+        indigo: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+        pink: "bg-pink-500/10 text-pink-600 border-pink-500/20",
+    };
+
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <Badge
+                    variant="outline"
+                    className={cn("pr-1 gap-1 font-normal transition-all text-[11px] cursor-pointer hover:bg-opacity-80", colors[color])}
+                >
+                    <span className="font-bold">{count}</span> {label}
+                    <div onClick={(e) => { e.stopPropagation(); onClear(); }} className="cursor-pointer hover:bg-black/10 rounded-full p-0.5 ml-1">
+                        <X className="h-3 w-3" />
+                    </div>
+                </Badge>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+                <div className="space-y-2">
+                    <h4 className="font-medium text-xs text-muted-foreground pb-2 border-b">Selected {label}</h4>
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                        {items.map((item: string) => (
+                            <div key={item} className="text-xs py-1 px-2 rounded hover:bg-secondary/50 truncate" title={item}>
+                                {item}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </PopoverContent>
+        </Popover>
     );
 }
 

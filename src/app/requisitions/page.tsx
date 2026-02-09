@@ -1,6 +1,8 @@
 "use client";
 
+
 import { useRouter } from "next/navigation";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 import { Card, CardContent } from "@/components/ui/card";
 import {
     Briefcase,
@@ -22,11 +24,11 @@ export default function RequisitionsMenuPage() {
         <div className="container mx-auto p-6 flex flex-col gap-8 max-w-7xl h-full justify-center">
 
             <div className="space-y-2">
-                <nav className="flex items-center text-sm text-muted-foreground gap-2">
-                    <span>Home</span>
-                    <span>&gt;</span>
-                    <span className="font-semibold text-foreground">Job Requisition Menu</span>
-                </nav>
+                <AtsBreadcrumb
+                    items={[
+                        { label: 'Job Requisition Menu' }
+                    ]}
+                />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

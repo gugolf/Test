@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { JRSwitcher } from "@/components/jr-switcher";
 import { JobRequisition } from "@/types/requisition";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 import { CandidateList } from "@/components/candidate-list";
 import { KanbanBoard } from "@/components/kanban-board";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -143,6 +144,13 @@ export default function JRManagePage() {
             />
 
             <div className="container mx-auto p-6 space-y-6 flex-1">
+                <AtsBreadcrumb
+                    items={[
+                        { label: 'Job Requisition Menu', href: '/requisitions' },
+                        { label: 'Manage' }
+                    ]}
+                />
+
                 {/* Header / Switcher Bar */}
                 <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 border-b pb-6">
                     <div className="flex flex-col gap-2">

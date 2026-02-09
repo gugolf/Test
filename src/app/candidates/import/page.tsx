@@ -8,7 +8,9 @@ import { processCsvUpload } from "@/app/actions/csv-actions";
 import { createUploadRecord } from "@/app/actions/resume-actions";
 import { getJobRequisitions } from "@/app/actions/requisitions";
 import { bulkAddCandidatesToJR } from "@/app/actions/jr-candidates";
+import { getStatuses } from "@/app/actions/candidate-filters";
 import { createClient } from "@/utils/supabase/client";
+import { updateUploadCandidateStatus } from "@/app/actions/resume-actions"; // Import update action
 // Ensure ResumeUpload is exported correctly in src/components/ResumeUpload.tsx
 import { ResumeUpload, UploadedFile } from "@/components/ResumeUpload";
 import {
@@ -39,6 +41,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { StatusSelect } from "@/components/ui/status-select";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
     Table,
@@ -54,6 +57,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 interface UploadLog {
     id: number | string; // UUID for resume, Int for CSV
@@ -67,6 +71,7 @@ interface UploadLog {
     uploader_email: string;
     created_at: string;
     resume_url?: string;
+    candidate_status?: string; // Added field
 }
 
 interface JobRequisition {
@@ -103,6 +108,13 @@ export default function CandidateImportPage() {
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [userFilter, setUserFilter] = useState<string>("all");
     const [sortConfig, setSortConfig] = useState<{ key: keyof UploadLog; direction: 'asc' | 'desc' } | null>(null);
+
+    // Status Master Data
+    const [statusOptions, setStatusOptions] = useState<{ status: string, color: string }[]>([]);
+
+    useEffect(() => {
+        getStatuses().then(data => setStatusOptions(data));
+    }, []);
 
     useEffect(() => {
         fetchLogs();
@@ -241,7 +253,7 @@ export default function CandidateImportPage() {
             const res = await createUploadRecord({
                 file_name: f.file.name,
                 resume_url: f.url!,
-                uploader_email: "sumethwork@gmail.com" // TODO: Real email
+                uploader_email: "sumethwork@gmail.gmail.com" // TODO: Real email
             });
 
             if (!res.success) {
@@ -391,9 +403,12 @@ export default function CandidateImportPage() {
     return (
         <div className="container mx-auto p-6 space-y-6 max-w-7xl h-full flex flex-col">
             <div className="flex flex-col gap-2">
-                <Button variant="ghost" className="w-fit p-0 h-auto text-slate-500 hover:text-slate-900 mb-2" onClick={() => router.back()}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back to Menu
-                </Button>
+                <AtsBreadcrumb
+                    items={[
+                        { label: 'Candidates', href: '/candidates' },
+                        { label: 'Import' }
+                    ]}
+                />
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-black tracking-tight text-slate-900">Candidate Import</h1>
@@ -425,7 +440,7 @@ export default function CandidateImportPage() {
                                         Upload multiple PDF resumes. The AI will process them in the background.
                                     </DialogDescription>
                                 </DialogHeader>
-                                <div className="py-4">
+                                <div className="py-4 space-y-4">
                                     <ResumeUpload onUploadComplete={handleResumeUploadComplete} />
                                 </div>
                             </DialogContent>
@@ -584,8 +599,9 @@ export default function CandidateImportPage() {
                                         <div className="flex items-center">User <SortIcon column="uploader_email" /></div>
                                     </TableHead>
                                     <TableHead className="w-[120px] cursor-pointer" onClick={() => requestSort('status')}>
-                                        <div className="flex items-center">Status <SortIcon column="status" /></div>
+                                        <div className="flex items-center">Process Status <SortIcon column="status" /></div>
                                     </TableHead>
+                                    <TableHead className="w-[200px]">Candidate Status</TableHead>
                                     <TableHead>Note</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -643,6 +659,28 @@ export default function CandidateImportPage() {
                                                             "bg-red-50 text-red-600 border-red-100")}>
                                                 {log.status}
                                             </Badge>
+                                        </TableCell>
+
+                                        {/* Candidate Status Dropdown */}
+                                        <TableCell>
+                                            <StatusSelect
+                                                value={log.candidate_status || ""}
+                                                onChange={async (val) => {
+                                                    // Optimistic Update
+                                                    setLogs(prev => prev.map(l => l.id === log.id ? { ...l, candidate_status: val } : l));
+
+                                                    // API Call
+                                                    const res = await updateUploadCandidateStatus(String(log.id), val, viewMode);
+                                                    if (res.success) {
+                                                        toast.success("Status updated");
+                                                    } else {
+                                                        toast.error("Failed to update status");
+                                                        // Revert if needed
+                                                    }
+                                                }}
+                                                className="w-[180px] h-8 text-xs bg-white border-slate-200"
+                                                placeholder="Select Status"
+                                            />
                                         </TableCell>
                                         <TableCell className="text-xs text-slate-500 italic truncate max-w-[200px]">{log.note}</TableCell>
                                     </TableRow>

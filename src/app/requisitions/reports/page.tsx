@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAllReports } from "@/app/actions/n8n-actions";
+import { getUserMap } from "@/app/actions/user-actions";
 import {
     FileText,
     FileSpreadsheet,
@@ -24,6 +25,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 interface Report {
     id: number;
@@ -43,6 +45,7 @@ export default function ReportsCenterPage() {
     const router = useRouter();
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
+    const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
 
     useEffect(() => {
         loadReports();
@@ -51,9 +54,12 @@ export default function ReportsCenterPage() {
     async function loadReports() {
         setLoading(true);
         const res = await getAllReports();
+        const map = await getUserMap();
+
         if (res.success) {
             setReports(res.data || []);
         }
+        setUserMap(map);
         setLoading(false);
     }
 
@@ -77,13 +83,12 @@ export default function ReportsCenterPage() {
     return (
         <div className="container mx-auto p-6 space-y-6 max-w-7xl">
             <div className="flex flex-col gap-2">
-                <Button
-                    variant="ghost"
-                    className="w-fit p-0 h-auto text-slate-500 hover:text-slate-900 mb-2"
-                    onClick={() => router.back()}
-                >
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back to Menu
-                </Button>
+                <AtsBreadcrumb
+                    items={[
+                        { label: 'Job Requisition Menu', href: '/requisitions' },
+                        { label: 'Report Center' }
+                    ]}
+                />
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-black tracking-tight text-slate-900">Report Center</h1>
@@ -137,7 +142,9 @@ export default function ReportsCenterPage() {
                                                 minute: '2-digit'
                                             })}
                                         </TableCell>
-                                        <TableCell className="text-slate-500 text-sm">{report.requester}</TableCell>
+                                        <TableCell className="text-slate-500 text-sm font-medium">
+                                            {userMap.get(report.requester.toLowerCase()) || report.requester}
+                                        </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className="font-mono text-xs bg-slate-50">
                                                 {report.jr_id}

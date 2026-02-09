@@ -14,6 +14,7 @@ import {
 import { FilterMultiSelect } from "@/components/ui/filter-multi-select";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { CreateJobRequisitionForm } from "@/components/create-jr-form";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 export default function RequisitionsPage() {
     const [jrs, setJrs] = useState<JobRequisition[]>([]);
@@ -75,6 +76,12 @@ export default function RequisitionsPage() {
 
     return (
         <div className="container mx-auto p-6 space-y-8 min-h-screen bg-slate-50/50">
+            <AtsBreadcrumb
+                items={[
+                    { label: 'Job Requisition Menu', href: '/requisitions' },
+                    { label: 'Table' }
+                ]}
+            />
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">Job Requisition Table</h1>

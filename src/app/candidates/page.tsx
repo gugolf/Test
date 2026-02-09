@@ -28,6 +28,7 @@ import {
     DialogTrigger,
     DialogFooter
 } from "@/components/ui/dialog";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 // MenuItem Component
 function MenuCard({
@@ -143,6 +144,12 @@ export default function CandidatesMenuPage() {
 
     return (
         <div className="flex flex-col gap-8 max-w-6xl mx-auto">
+            <AtsBreadcrumb
+                items={[
+                    { label: 'Candidates' }
+                ]}
+            />
+
             <div className="flex flex-col gap-2">
                 <h1 className="text-3xl font-extrabold tracking-tight">Candidate Central</h1>
                 <p className="text-muted-foreground">Manage intake, screening, and database operations.</p>
@@ -217,14 +224,6 @@ export default function CandidatesMenuPage() {
                     icon={TableProperties}
                     color="bg-purple-500"
                     description="Initial screening results"
-                />
-
-                {/* 7. Profile Table */}
-                <MenuCard
-                    title="Profile Table"
-                    icon={DatabaseIcon}
-                    color="bg-pink-500"
-                    description="Deep profile data view"
                 />
 
             </div>

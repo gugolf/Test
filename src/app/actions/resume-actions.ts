@@ -20,7 +20,7 @@ export async function createUploadRecord(record: UploadRecord) {
             .from('resume_uploads')
             .select('id, status')
             .eq('file_name', record.file_name)
-            .neq('status', 'Error') // Ignore failed uploads
+            .neq('status', 'Error')
             .single();
 
         if (existing) {
@@ -36,7 +36,7 @@ export async function createUploadRecord(record: UploadRecord) {
                     file_name: record.file_name,
                     resume_url: record.resume_url,
                     uploader_email: record.uploader_email,
-                    status: 'pending' // Default status
+                    status: 'pending' // Default processing status
                 }
             ])
             .select()
@@ -94,6 +94,47 @@ export async function updateUploadStatus(id: string, status: string, note?: stri
         return { success: true };
     } catch (error: any) {
         console.error("Update Status Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function updateUploadCandidateStatus(
+    uploadId: string,
+    newStatus: string,
+    type: 'resume' | 'csv' = 'resume'
+) {
+    try {
+        const tableName = type === 'csv' ? 'csv_upload_logs' : 'resume_uploads';
+
+        // 1. Update the upload record
+        const { data: uploadRecord, error: uploadError } = await supabase
+            .from(tableName)
+            .update({ candidate_status: newStatus })
+            .eq('id', uploadId)
+            .select('candidate_id')
+            .single();
+
+        if (uploadError) throw uploadError;
+
+        // 2. If already linked to a candidate, update the candidate profile too
+        if (uploadRecord && uploadRecord.candidate_id) {
+            // Note: For CSV, candidate_id might be a string but not necessarily linked if imported via CSV?
+            // Actually, CSV upload logic usually links candidate_id.
+            // If candidate_id is present, try to update profile.
+
+            const { error: candidateError } = await supabase
+                .from('Candidate Profile')
+                .update({ candidate_status: newStatus })
+                .eq('candidate_id', uploadRecord.candidate_id);
+
+            if (candidateError) {
+                console.error("Failed to sync status to candidate:", candidateError);
+            }
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("Error updating status:", error);
         return { success: false, error: error.message };
     }
 }

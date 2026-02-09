@@ -134,29 +134,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
         if (logError && logError.code !== 'PGRST116') console.error("Prescreen Fetch Error:", logError);
 
-        // 6. Fetch Documents (Resume)
-        // Note: 'documents' table appears to be a vector store without candidate_id. 
-        // Real file storage might be in Storage Buckets.
-        // For now, returning empty to prevent errors.
+        // 6. Documents (Resume + Placeholder for others)
         const documents: any[] = [];
-        /*
-        try {
-            const { data: docs, error: docError } = await adminAuthClient
-                .from('documents')
-                .select('*')
-                // .eq('candidate_id', candidateId) // Column doesn't exist
-                // .ilike('document_name', '%resume%')
-                // .order('created_at', { ascending: false });
-            
-            if (docError) {
-                console.error("Documents Fetch Error:", docError);
-            } else {
-                documents = docs || [];
-            }
-        } catch (e) {
-            console.error("Document fetch exception:", e);
+
+        // Add Main Resume if exists from Profile
+        if ((profile as any)?.resume_url) {
+            const url = (profile as any).resume_url;
+            const fileName = url.split('/').pop() || "Resume.pdf";
+            documents.push({
+                document_name: "Main Resume (" + (fileName.length > 20 ? fileName.substring(0, 17) + "..." : fileName) + ")",
+                file_url: url,
+                type: "resume",
+                created_at: (profile as any).modify_date || (profile as any).created_date
+            });
         }
-        */
 
         const enhance = enhanceResult as any;
         const profileData = (profile as any) || {};
@@ -185,5 +176,50 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     } catch (error: any) {
         console.error("Detail API Error:", error);
         return NextResponse.json({ error: error.message, details: error.toString() }, { status: 500 });
+    }
+}
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+    const candidateId = (await params).id;
+    if (!candidateId) {
+        return NextResponse.json({ error: "Candidate ID is required" }, { status: 400 });
+    }
+
+    try {
+        const body = await req.json();
+        const { candidate_status, resume_url, name, email, mobile_phone, linkedin, ...otherFields } = body;
+
+        // Construct update object for 'Candidate Profile'
+        const updateData: any = {};
+        if (candidate_status !== undefined) updateData.candidate_status = candidate_status;
+        if (resume_url !== undefined) updateData.resume_url = resume_url;
+        // Map other fields carefully to match DB columns
+        if (name !== undefined) updateData.name = name;
+        if (email !== undefined) updateData.email = email;
+        if (mobile_phone !== undefined) updateData.mobile_phone = mobile_phone;
+        if (linkedin !== undefined) updateData.linkedin = linkedin;
+
+        // Add timestamp if available in schema (modify_date)
+        updateData.modify_date = new Date().toISOString();
+
+        if (Object.keys(updateData).length === 0) {
+            return NextResponse.json({ message: "No fields to update" });
+        }
+
+        const { error } = await adminAuthClient
+            .from('Candidate Profile')
+            .update(updateData)
+            .eq('candidate_id', candidateId);
+
+        if (error) {
+            console.error("Update Error:", error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true, message: "Candidate updated successfully" });
+
+    } catch (error: any) {
+        console.error("PATCH API Error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

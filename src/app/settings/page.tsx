@@ -2,7 +2,10 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { N8nIntegrations } from "@/components/settings/n8n-integrations";
-import { Settings, Sliders, Webhook } from "lucide-react";
+import { UserManagement } from "@/components/settings/user-management";
+import { ChangelogViewer } from "@/components/settings/changelog-viewer";
+import { AppGuidelines } from "@/components/settings/app-guidelines";
+import { Settings, Sliders, Webhook, Users, History, BookOpen } from "lucide-react";
 import { Toaster } from "sonner";
 
 export default function SettingsPage() {
@@ -21,6 +24,15 @@ export default function SettingsPage() {
                     <TabsTrigger value="integrations" className="gap-2">
                         <Webhook className="w-4 h-4" /> Integrations
                     </TabsTrigger>
+                    <TabsTrigger value="users" className="gap-2">
+                        <Users className="w-4 h-4" /> Users
+                    </TabsTrigger>
+                    <TabsTrigger value="guidelines" className="gap-2">
+                        <BookOpen className="w-4 h-4" /> Guidelines
+                    </TabsTrigger>
+                    <TabsTrigger value="changelog" className="gap-2">
+                        <History className="w-4 h-4" /> Changelog
+                    </TabsTrigger>
                     <TabsTrigger value="advanced" className="gap-2" disabled>
                         <Sliders className="w-4 h-4" /> Advanced
                     </TabsTrigger>
@@ -35,6 +47,22 @@ export default function SettingsPage() {
                 <TabsContent value="integrations" className="space-y-4">
                     <div className="grid gap-6">
                         <N8nIntegrations />
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="users" className="space-y-4">
+                    <UserManagement />
+                </TabsContent>
+
+                <TabsContent value="guidelines" className="space-y-4">
+                    <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm">
+                        <AppGuidelines />
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="changelog" className="space-y-4">
+                    <div className="border border-slate-100 rounded-xl p-4 bg-white shadow-sm">
+                        <ChangelogViewer />
                     </div>
                 </TabsContent>
 

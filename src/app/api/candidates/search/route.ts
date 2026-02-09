@@ -1,25 +1,31 @@
 import { NextResponse } from 'next/server';
 import { adminAuthClient } from '@/lib/supabase/admin';
+import { getCandidateIdsByExperienceFilters } from '@/lib/candidate-service';
 
 export async function POST(req: Request) {
     try {
         const { filters, page = 1, pageSize = 20, search } = await req.json();
         const offset = (page - 1) * pageSize;
 
-        // Check if any "Experience Level" filters are applied
-        const hasExperienceFilters =
-            filters?.country?.length > 0 ||
-            filters?.company?.length > 0 ||
-            filters?.industry?.length > 0 ||
-            filters?.group?.length > 0 ||
-            filters?.position?.length > 0 ||
-            (filters?.isCurrent !== undefined);
+        // --- PRE-CALCULATE EXPERIENCE FILTERS ---
+        // We do this first so we can use the restricted candidate pool for both:
+        // 1. Scoping the smart search (e.g. "Director" only within "Adidas")
+        // 2. Filtering the final profile list
+
+        const normalizedFilters = {
+            companies: filters?.company || filters?.companies,
+            positions: filters?.position || filters?.positions,
+            countries: filters?.country || filters?.countries,
+            industries: filters?.industry || filters?.industries,
+            groups: filters?.group || filters?.groups,
+        };
+
+        const expCandidateIds = await getCandidateIdsByExperienceFilters(normalizedFilters);
 
         let profileQuery = adminAuthClient
             .from('Candidate Profile')
             .select('*', { count: 'exact' });
 
-        // --- APPLY PROFILE FILTERS ---
         // --- SEARCH LOGIC ---
         let searchCandidateIds: string[] = [];
 
@@ -27,42 +33,35 @@ export async function POST(req: Request) {
             // 1. Search in Profile (Name, Email, ID)
             profileQuery = profileQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,candidate_id.ilike.%${search}%`);
 
-            // 2. Search in Experiences (Company, Position) - Added per user request
-            // We need to find IDs that match the search term in experiences
-            const { data: expSearchMatches, error: expSearchError } = await adminAuthClient
+            // 2. Search in Experiences (Company, Position)
+            // Optimization: If we already have a candidate pool from filters, restricts the search to them.
+            let experienceSearchQuery = adminAuthClient
                 .from('candidate_experiences')
                 .select('candidate_id')
-                .or(`company.ilike.%${search}%,position.ilike.%${search}%`)
-                .limit(5000);
+                .or(`company.ilike.%${search}%,position.ilike.%${search}%`);
 
-            if (!expSearchError && expSearchMatches && expSearchMatches.length > 0) {
-                const ids = expSearchMatches.map((e: any) => e.candidate_id);
-                // We want to OR this with the profile query. 
-                // However, Supabase .or() works better on columns within the same table.
-                // Mixing OR updates across tables is tricky.
-                // STRATEGY: 
-                // If search finds matches in experiences, we ADD those IDs to the profile query explicitly?
-                // OR logically: (Profile Match) OR (ID in Experience Matches)
+            if (expCandidateIds !== null) {
+                // If we have < 10000 IDs, we can filter directly.
+                // If massive, this might be slow, but better than global search.
+                if (expCandidateIds.length > 0) {
+                    // Restrict search to already filtered candidates
+                    experienceSearchQuery = experienceSearchQuery.in('candidate_id', expCandidateIds);
+                } else {
+                    // Filter returned 0 candidates. Smart search in experiences should also return 0.
+                    // We can skip the query. But let's let it run with empty IN to be safe/consistent?
+                    // Or just skip.
+                }
+            }
 
-                // Let's try combining logic:
-                // Since we can't easily do a cross-table OR in a single .from('Candidate Profile') call efficiently without a join view,
-                // We will collect the IDs from Experience search and use an `.or()` on candidate_id with the profile attributes.
+            // Only run if we either have NO filters (global search) OR we have matching candidates
+            if (expCandidateIds === null || expCandidateIds.length > 0) {
+                const { data: expSearchMatches, error: expSearchError } = await experienceSearchQuery.limit(5000);
 
-                // Construct OR filter: name ILIKE.. or email ILIKE.. or candidate_id IN (...)
-                // But `candidate_id.in` isn't directly compatible inside an `.or()` string syntax usually.
-
-                // SIMPLER STRATEGY: 
-                // If we found experience matches, we add their IDs to a list.
-                // Then we query Profile where (Name match OR Email match ... OR candidate_id in list)
-
-                // Limitation: .or() string doesn't support an array IN check easily.
-                // Alternative: We fetch matching Profile IDs first? No.
-
-                // Working Approach for OR with external IDs:
-                // We can't easily modify the existing `profileQuery` variable which is a strict builder.
-                // Instead, we might need to modify how we build `profileQuery`.
-
-                searchCandidateIds = ids;
+                if (!expSearchError && expSearchMatches && expSearchMatches.length > 0) {
+                    const ids = expSearchMatches.map((e: any) => e.candidate_id);
+                    // Deduplicate
+                    searchCandidateIds = Array.from(new Set(ids));
+                }
             }
         }
 
@@ -71,34 +70,17 @@ export async function POST(req: Request) {
             let orString = `name.ilike.%${search}%,email.ilike.%${search}%,candidate_id.ilike.%${search}%`;
 
             if (searchCandidateIds.length > 0) {
-                // Creating a massive OR string with IDs is risky if too many.
-                // If IDs < 100, we can do `candidate_id.in.(${ids})`.
-                // If IDs are many, this strategy is hard.
-
-                // Better: If we have experience matches, strict filtering becomes ambiguous.
-                // "Search" usually means Partial Match.
-
-                // Let's try this: 
-                // If we found IDs from experience search, we add `candidate_id.in.(${searchCandidateIds.join(',')})` to the OR group?
-                // Supabase PostgREST: `or=(col.eq.val,col2.in.(val1,val2))`
-
-                // However, safely joining many IDs into a query string is not ideal.
-
-                // Fallback: If exp matches found, we relax the profile query to include them?
-                // or maybe we execute two queries and merge? (Pagination pain)
-
-                // Let's stick effectively to: Filter Profile matching text OR ID is in [ExpMatches].
-                if (searchCandidateIds.length > 0) {
-                    // Note: syntax `candidate_id.in.("id1","id2")`
-                    // We limit to top 100 matches from experience to prevent URL overflow.
-                    const limitedIds = searchCandidateIds.slice(0, 100);
-                    const idList = limitedIds.map(id => `"${id}"`).join(',');
-                    orString += `,candidate_id.in.(${idList})`;
-                }
+                // Note: syntax `candidate_id.in.("id1","id2")`
+                // We limit to top 100 matches from experience to prevent URL overflow.
+                const limitedIds = searchCandidateIds.slice(0, 100);
+                const idList = limitedIds.map(id => `"${id}"`).join(',');
+                orString += `,candidate_id.in.(${idList})`;
             }
 
             profileQuery = profileQuery.or(orString);
         }
+
+        // --- APPLY OTHER PROFILE FILTERS ---
         if (filters?.gender?.length) profileQuery = profileQuery.in('gender', filters.gender);
         if (filters?.status?.length) profileQuery = profileQuery.in('candidate_status', filters.status);
         if (filters?.jobGrouping?.length) profileQuery = profileQuery.in('job_grouping', filters.jobGrouping);
@@ -128,42 +110,13 @@ export async function POST(req: Request) {
             }
         }
 
-        // --- STRATEGY SWITCH ---
-
-        if (hasExperienceFilters) {
-            // STRATEGY A: Experience Filters Applied
-            // We must first find candidates who match the experience criteria
-            // Note: For large datasets, this linking should be done via a View or RPC. 
-            // Note: For large datasets, this linking should be done via a View or RPC.
-            // For 25k rows, we can fetch matching IDs.
-
-            // STRATEGY: Find matching IDs from experiences first
-            let expQuery = adminAuthClient
-                .from('candidate_experiences')
-                .select('candidate_id'); // We need ALL matches to correct count? No, just IDs.
-
-            if (filters.position?.length) expQuery = expQuery.in('position', filters.position);
-            if (filters.company?.length) expQuery = expQuery.in('company', filters.company);
-            if (filters.country?.length) expQuery = expQuery.in('country', filters.country);
-            if (filters.industry?.length) expQuery = expQuery.in('company_industry', filters.industry);
-            if (filters.group?.length) expQuery = expQuery.in('company_group', filters.group);
-
-            // Increase limit to scan more experiences (Supabase default is 1000)
-            // Warning: This is not scalable to millions, but fine for 25k.
-            // We limit to 5000 matches for now to prevent timeout, or use range if needed.
-            // Get unique IDs (limit 10000 to be safe, or use a better strategy for huge datasets)
-            const { data: expMatches, error: expError } = await expQuery.limit(10000);
-
-            if (expError) throw expError;
-
-            const candidateIds = Array.from(new Set((expMatches as any)?.map((e: any) => e.candidate_id) || []));
-
-            if (candidateIds.length === 0) {
+        // --- APPLY EXPERIENCE FILTERS (Intersection) ---
+        if (expCandidateIds !== null) {
+            if (expCandidateIds.length === 0) {
                 return NextResponse.json({ data: [], total: 0, page, pageSize });
             }
-
             // Apply ID filter to Profile Query
-            profileQuery = profileQuery.in('candidate_id', candidateIds);
+            profileQuery = profileQuery.in('candidate_id', expCandidateIds);
         }
 
         // --- EXECUTE PAGINATED PROFILE QUERY ---

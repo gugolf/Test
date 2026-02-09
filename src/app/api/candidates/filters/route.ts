@@ -8,9 +8,11 @@ export async function GET() {
 
         // 1. Fetch from 'candidate_experiences'
         // Columns: company, position, country, company_industry, company_group
+        // NOTE: We only need distinct countries, industries, groups from here now. 
+        // Company and Position are handled via Async Search.
         const { data: expData, error: expError } = await adminAuthClient
             .from('candidate_experiences')
-            .select('company, position, country, company_industry, company_group')
+            .select('country, company_industry, company_group')
             .limit(limit);
 
         if (expError) {
@@ -29,35 +31,12 @@ export async function GET() {
             console.error("Error fetching profile filters:", profError);
         }
 
-        // 3. Fetch from 'company_master' (Added per user request)
-        // Loop to fetch all companies because Supabase limits to 1000 rows
-        let allCompanies: any[] = [];
-        let page = 0;
-        const pageSize = 1000;
-        let hasMore = true;
+        // 3. Fetch from 'candidate_status_master'
+        const { data: masterStatuses } = await adminAuthClient
+            .from('candidate_status_master')
+            .select('status');
 
-        while (hasMore && allCompanies.length < 20000) {
-            const { data: chunk, error: companyError } = await adminAuthClient
-                .from('company_master')
-                .select('company_master')
-                .order('company_master', { ascending: true })
-                .range(page * pageSize, (page + 1) * pageSize - 1);
-
-            if (companyError) {
-                console.error("Error fetching company master page", page, companyError);
-                break;
-            }
-
-            if (chunk && chunk.length > 0) {
-                allCompanies = allCompanies.concat(chunk);
-                if (chunk.length < pageSize) {
-                    hasMore = false;
-                }
-                page++;
-            } else {
-                hasMore = false;
-            }
-        }
+        const uniqueMasterStatuses = masterStatuses ? masterStatuses.map(s => s.status) : [];
 
         // Helper to extract unique sorted values
         const getUnique = (data: any[] | null, key: string) => {
@@ -67,8 +46,6 @@ export async function GET() {
 
         const response = {
             // From candidate_experiences
-            // companies: getUnique(expData, 'company'), // REMOVED: Now handled below using company_master
-            positions: getUnique(expData, 'position'), // Requested Position Filter
             countries: getUnique(expData, 'country'),
             industries: getUnique(expData, 'company_industry'),
             groups: getUnique(expData, 'company_group'),
@@ -77,20 +54,17 @@ export async function GET() {
             jobGroupings: getUnique(profileData, 'job_grouping'),
             jobFunctions: getUnique(profileData, 'job_function'),
             genders: getUnique(profileData, 'gender'),
-            statuses: getUnique(profileData, 'candidate_status'),
 
-            // Mapping for dependencies (Country -> Company connection)
-            mapping: (expData as any)?.map((e: any) => ({
-                country: e.country,
-                company: e.company,
-                industry: e.company_industry,
-                group: e.company_group
-            })) || [],
+            // Status Master (Master Table + Existing in Candidates)
+            statuses: Array.from(new Set([
+                ...uniqueMasterStatuses,
+                ...getUnique(profileData, 'candidate_status')
+            ])).sort(),
 
-            // Use company_master if available, otherwise fallback to experiences
-            companies: allCompanies && allCompanies.length > 0
-                ? getUnique(allCompanies, 'company_master')
-                : getUnique(expData, 'company')
+            // Mapping removed as it was too heavy
+            // mapping: ...
+
+            // companies: ... // REMOVED: Async
         };
 
         return NextResponse.json(response);
@@ -99,3 +73,4 @@ export async function GET() {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+

@@ -9,6 +9,7 @@ import { ConsolidatedResult } from "@/components/ai-search/types";
 import { getSearchResults, getSearchJob } from "@/app/actions/ai-search";
 import { Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 export default function AISearchPage() {
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -82,6 +83,11 @@ export default function AISearchPage() {
             {/* Right Content: Results */}
             <div className="flex-1 flex relative overflow-hidden">
                 <main className="flex-1 p-4 flex flex-col h-full bg-slate-50/50">
+                    <AtsBreadcrumb
+                        items={[
+                            { label: 'AI Search' }
+                        ]}
+                    />
                     <div className="mb-4 flex justify-between items-center">
                         <h2 className="text-lg font-semibold text-slate-700">
                             Search Results
