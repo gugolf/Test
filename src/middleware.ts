@@ -39,7 +39,8 @@ export async function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname
 
     // Allow access to login, auth callback, and unauthorized pages
-    if (path.startsWith('/login') || path.startsWith('/auth') || path.startsWith('/unauthorized')) {
+    // Also allow access to the n8n public API
+    if (path.startsWith('/login') || path.startsWith('/auth') || path.startsWith('/unauthorized') || path.startsWith('/api/n8n')) {
         return response
     }
 
