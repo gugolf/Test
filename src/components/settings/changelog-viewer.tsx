@@ -14,6 +14,18 @@ interface Release {
 
 const releases: Release[] = [
     {
+        version: "v1.3.1",
+        date: "Feb 11, 2026",
+        description: "JR Table Refinements & Scalability Fixes.",
+        features: [
+            "**Created By Filter**: Added filter to Job Requisition table showing real user names.",
+            "**Pagination Fix**: Resolved issue where charts limited data to 1000 candidates (now supports unrestricted volume).",
+            "**Copy JR**: Added ability to duplicate a Job Requisition and its candidates (Reset to Pool/Longlist).",
+            "**Table Sorting**: Added sorting capability to JR ID, Position, and Created By columns.",
+            "**JR Type**: Renamed 'Status' column to 'JR Type' (New/Replacement)."
+        ]
+    },
+    {
         version: "v1.3.0",
         date: "Feb 10, 2026",
         description: "User Management & Navigation enhancements.",
