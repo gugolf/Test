@@ -179,7 +179,7 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
     const redStatuses = ["Rejected"];
 
     // Default Filters
-    return candidates.filter(c => {
+    const filteredCandidates = candidates.filter(c => {
         try {
             const filter = (filterText || "").toLowerCase();
             const matchesText =
@@ -453,7 +453,7 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                                                         "text-[11px] font-black h-8 pl-3 pr-8 rounded-xl border appearance-none focus:outline-none transition-all cursor-pointer w-full bg-white max-w-[140px]",
                                                         getRowStatusClass(c.status)
                                                     )}
-                                                    value={c.status}
+                                                    value={c.status || ""}
                                                     onChange={(e) => handleStatusChange(c.id, e.target.value)}
                                                 >
                                                     {statusOptions.length > 0 ? (
@@ -497,8 +497,8 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                                     </td>
                                     <td className="px-4 py-4">
                                         <div className="flex items-center gap-2 font-black text-[12px] text-slate-700 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
-                                            {(c.candidate_gender || "-")}
-                                            {c.candidate_age || "-"}
+                                            {safeRender(c.candidate_gender)}
+                                            {c.candidate_age ? `, ${c.candidate_age}` : ""}
                                         </div>
                                     </td>
                                     <td className="px-4 py-4">
@@ -506,13 +506,13 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                                             <div className="flex items-center gap-2 text-[11px] font-black text-slate-700">
                                                 <Briefcase className="h-3 w-3 text-primary/60" />
                                                 <span className="truncate max-w-[200px]" title={c.candidate_current_position}>
-                                                    {c.candidate_current_position || "Unspecified Role"}
+                                                    {safeRender(c.candidate_current_position)}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
                                                 <Building2 className="h-3 w-3 text-slate-300" />
                                                 <span className="truncate max-w-[200px]" title={c.candidate_current_company}>
-                                                    {c.candidate_current_company || "N/A"}
+                                                    {safeRender(c.candidate_current_company)}
                                                 </span>
                                             </div>
                                         </div>
@@ -602,6 +602,13 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
 
 // Helper for safe string comparison
 const safeLower = (s: any) => (typeof s === 'string' ? s : String(s || "")).toLowerCase();
+
+// NEW: Helper to safely render values and prevent object crashes
+const safeRender = (val: any) => {
+    if (val === null || val === undefined) return "-";
+    if (typeof val === 'object') return "-"; // Block objects
+    return String(val);
+}
 
 function getRowStatusClass(status: string) {
     const s = safeLower(status);
