@@ -177,16 +177,21 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
     const redStatuses = ["Rejected"];
 
     // Default Filters
-    const filteredCandidates = candidates.filter(c => {
-        const matchesText =
-            (c.candidate_name || "").toLowerCase().includes(filterText.toLowerCase()) ||
-            (c.candidate_id || "").toLowerCase().includes(filterText.toLowerCase()) ||
-            (c.candidate_current_position || "").toLowerCase().includes(filterText.toLowerCase()) ||
-            (c.candidate_current_company || "").toLowerCase().includes(filterText.toLowerCase());
+    return candidates.filter(c => {
+        try {
+            const filter = (filterText || "").toLowerCase();
+            const matchesText =
+                (c.candidate_name || "").toLowerCase().includes(filter) ||
+                (c.candidate_id || "").toLowerCase().includes(filter) ||
+                (c.candidate_current_position || "").toLowerCase().includes(filter) ||
+                (c.candidate_current_company || "").toLowerCase().includes(filter);
 
-        const matchesStatus = statusFilter === "All" || c.status === statusFilter;
+            const matchesStatus = statusFilter === "All" || c.status === statusFilter;
 
-        return matchesText && matchesStatus;
+            return matchesText && matchesStatus;
+        } catch (e) {
+            return false;
+        }
     });
 
     // Custom Sorting: Active > Grey > Red
@@ -593,8 +598,11 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
     );
 }
 
+// Helper for safe string comparison
+const safeLower = (s: any) => (typeof s === 'string' ? s : String(s || "")).toLowerCase();
+
 function getRowStatusClass(status: string) {
-    const s = String(status || "").toLowerCase();
+    const s = safeLower(status);
     if (s.includes('pool')) return 'bg-slate-100 text-slate-600 border-slate-200 hover:border-slate-300';
     if (s.includes('screen')) return 'bg-blue-50 text-blue-600 border-blue-100 hover:border-blue-200';
     if (s.includes('interview')) return 'bg-purple-50 text-purple-600 border-purple-100 hover:border-purple-200';
