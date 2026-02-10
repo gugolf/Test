@@ -490,7 +490,7 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                                     </td>
                                     <td className="px-4 py-4">
                                         <div className="flex items-center gap-2 font-black text-[12px] text-slate-700 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
-                                            {c.candidate_gender === 'Male' ? <UserCircle2 className="h-4 w-4 text-blue-500" /> : <UserCircle2 className="h-4 w-4 text-rose-500" />}
+                                            {(c.candidate_gender || "-")}
                                             {c.candidate_age || "-"}
                                         </div>
                                     </td>
