@@ -6,9 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { updateEmploymentRecord } from "@/app/actions/employment";
+import { updateEmploymentRecord, getResignationReasons, addResignationReason } from "@/app/actions/employment";
 import { toast } from "sonner";
-import { Save, Loader2, Calendar, FileText } from "lucide-react";
+import { Save, Loader2, Calendar, FileText, Check, ChevronsUpDown, Plus, User, Building, Briefcase, GraduationCap } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface EditResignationDialogProps {
     open: boolean;
@@ -26,11 +31,20 @@ export function EditResignationDialog({
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         resign_date: "",
-        resignation_reason: "", // Maps to resignation_reason_test in DB based on usage in markAsResigned
+        resignation_reason: "",
         resign_note: "",
         position: "",
-        bu: ""
+        bu: "",
+        latest_hiring_manager: "",
+        company_destination: "",
+        new_position: "",
+        resign_job_grade: "",
+        resign_bu: ""
     });
+
+    const [reasons, setReasons] = useState<string[]>([]);
+    const [reasonSearch, setReasonSearch] = useState("");
+    const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
     useEffect(() => {
         if (open && initialData) {
@@ -39,10 +53,21 @@ export function EditResignationDialog({
                 resignation_reason: initialData.resignation_reason_test || initialData.resignation_reason || "",
                 resign_note: initialData.resign_note || "",
                 position: initialData.position || "",
-                bu: initialData.bu || ""
+                bu: initialData.bu || "",
+                latest_hiring_manager: initialData.latest_hiring_manager || "",
+                company_destination: initialData.company_destination || "",
+                new_position: initialData.new_position || "",
+                resign_job_grade: initialData.resign_job_grade || "",
+                resign_bu: initialData.resign_bu || ""
             });
+            fetchReasons();
         }
     }, [open, initialData]);
+
+    const fetchReasons = async () => {
+        const fetchedReasons = await getResignationReasons();
+        setReasons(fetchedReasons);
+    };
 
     const handleSubmit = async () => {
         setLoading(true);
@@ -57,7 +82,12 @@ export function EditResignationDialog({
             resignation_reason_test: formData.resignation_reason || null,
             resign_note: formData.resign_note || null,
             position: formData.position || null,
-            bu: formData.bu || null
+            bu: formData.bu || null,
+            latest_hiring_manager: formData.latest_hiring_manager || null,
+            company_destination: formData.company_destination || null,
+            new_position: formData.new_position || null,
+            resign_job_grade: formData.resign_job_grade || null,
+            resign_bu: formData.resign_bu || null
         });
 
         if (res.success) {
@@ -83,79 +113,206 @@ export function EditResignationDialog({
                     </DialogDescription>
                 </div>
 
-                <div className="p-6 grid gap-6">
-                    {/* Basic Info Read-only/Edit */}
-                    <div className="grid grid-cols-2 gap-4">
+                <ScrollArea className="max-h-[60vh]">
+                    <div className="p-6 grid gap-6">
+                        {/* Basic Info Read-only/Edit */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Position</Label>
+                                <Input
+                                    value={formData.position}
+                                    onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs font-bold"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Business Unit</Label>
+                                <Input
+                                    value={formData.bu}
+                                    onChange={(e) => setFormData({ ...formData, bu: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs font-medium"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                    <Calendar className="w-3 h-3 text-red-500" /> Resignation Date
+                                </Label>
+                                <Input
+                                    type="date"
+                                    value={formData.resign_date}
+                                    onChange={(e) => setFormData({ ...formData, resign_date: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                    <User className="w-3 h-3 text-red-500" /> Latest Hiring Manager
+                                </Label>
+                                <Input
+                                    placeholder="Name..."
+                                    value={formData.latest_hiring_manager}
+                                    onChange={(e) => setFormData({ ...formData, latest_hiring_manager: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs"
+                                />
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Position</Label>
-                            <Input
-                                value={formData.position}
-                                onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                                className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs font-bold"
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                <FileText className="w-3 h-3 text-red-500" /> Resignation Reason
+                            </Label>
+
+                            <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={isPopoverOpen}
+                                        className="w-full justify-between h-10 rounded-xl bg-slate-50 border-slate-200 text-xs font-medium"
+                                    >
+                                        {formData.resignation_reason || "Select a reason..."}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[450px] p-0 rounded-2xl border-none shadow-2xl overflow-hidden">
+                                    <Command>
+                                        <CommandInput
+                                            placeholder="Search or type a new reason..."
+                                            value={reasonSearch}
+                                            onValueChange={setReasonSearch}
+                                            className="h-12"
+                                        />
+                                        <CommandEmpty className="p-4 text-center">
+                                            <div className="space-y-3">
+                                                <p className="text-xs text-slate-500">No matching reason found.</p>
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    className="w-full rounded-xl h-10 text-[10px] uppercase font-black tracking-widest bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100"
+                                                    onClick={async () => {
+                                                        if (reasonSearch.trim()) {
+                                                            await addResignationReason(reasonSearch.trim());
+                                                            setFormData({ ...formData, resignation_reason: reasonSearch.trim() });
+                                                            setIsPopoverOpen(false);
+                                                            setReasonSearch("");
+                                                            fetchReasons();
+                                                        }
+                                                    }}
+                                                >
+                                                    <Plus className="w-3 h-3 mr-2" /> Add "{reasonSearch}" as new reason
+                                                </Button>
+                                            </div>
+                                        </CommandEmpty>
+                                        <CommandGroup>
+                                            <CommandList className="max-h-[200px]">
+                                                {reasons.map((r) => (
+                                                    <CommandItem
+                                                        key={r}
+                                                        value={r}
+                                                        onSelect={(currentValue) => {
+                                                            setFormData({ ...formData, resignation_reason: currentValue === formData.resignation_reason ? "" : currentValue });
+                                                            setIsPopoverOpen(false);
+                                                        }}
+                                                        className="py-3 px-4 text-xs font-medium cursor-pointer hover:bg-slate-50"
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4 text-emerald-500",
+                                                                formData.resignation_reason === r ? "opacity-100" : "opacity-0"
+                                                            )}
+                                                        />
+                                                        {r}
+                                                    </CommandItem>
+                                                ))}
+                                            </CommandList>
+                                        </CommandGroup>
+                                    </Command>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                    <Building className="w-3 h-3 text-red-500" /> Company Destination
+                                </Label>
+                                <Input
+                                    placeholder="New Company..."
+                                    value={formData.company_destination}
+                                    onChange={(e) => setFormData({ ...formData, company_destination: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                    <Briefcase className="w-3 h-3 text-red-500" /> New Position
+                                </Label>
+                                <Input
+                                    placeholder="Job Title..."
+                                    value={formData.new_position}
+                                    onChange={(e) => setFormData({ ...formData, new_position: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                    <GraduationCap className="w-3 h-3 text-red-500" /> Resigned Job Grade
+                                </Label>
+                                <Input
+                                    placeholder="Grade..."
+                                    value={formData.resign_job_grade}
+                                    onChange={(e) => setFormData({ ...formData, resign_job_grade: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                    <Building className="w-3 h-3 text-red-500" /> Resigned BU
+                                </Label>
+                                <Input
+                                    placeholder="Final BU..."
+                                    value={formData.resign_bu}
+                                    onChange={(e) => setFormData({ ...formData, resign_bu: e.target.value })}
+                                    className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Resignation Note</Label>
+                            <Textarea
+                                placeholder="Additional details about resignation..."
+                                value={formData.resign_note}
+                                onChange={(e) => setFormData({ ...formData, resign_note: e.target.value })}
+                                className="min-h-[80px] rounded-xl bg-slate-50 border-slate-200 text-xs"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Business Unit</Label>
-                            <Input
-                                value={formData.bu}
-                                onChange={(e) => setFormData({ ...formData, bu: e.target.value })}
-                                className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs font-medium"
-                            />
+
+                        <div className="flex gap-3 pt-2">
+                            <Button
+                                variant="ghost"
+                                onClick={() => onOpenChange(false)}
+                                className="flex-1 rounded-xl font-bold uppercase text-xs tracking-widest h-12"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSubmit}
+                                disabled={loading}
+                                className="flex-[2] bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold uppercase text-xs tracking-widest h-12 shadow-lg shadow-red-500/20"
+                            >
+                                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                Update
+                            </Button>
                         </div>
                     </div>
-
-                    <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                            <Calendar className="w-3 h-3" /> Resignation Date
-                        </Label>
-                        <Input
-                            type="date"
-                            value={formData.resign_date}
-                            onChange={(e) => setFormData({ ...formData, resign_date: e.target.value })}
-                            className="h-11 rounded-xl bg-slate-50 border-slate-200"
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                            <FileText className="w-3 h-3" /> Reason
-                        </Label>
-                        <Input
-                            placeholder="e.g. Career Growth"
-                            value={formData.resignation_reason}
-                            onChange={(e) => setFormData({ ...formData, resignation_reason: e.target.value })}
-                            className="h-11 rounded-xl bg-slate-50 border-slate-200"
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Note</Label>
-                        <Textarea
-                            placeholder="Additional details..."
-                            value={formData.resign_note}
-                            onChange={(e) => setFormData({ ...formData, resign_note: e.target.value })}
-                            className="min-h-[100px] rounded-xl bg-slate-50 border-slate-200"
-                        />
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                        <Button
-                            variant="ghost"
-                            onClick={() => onOpenChange(false)}
-                            className="flex-1 rounded-xl font-bold uppercase text-xs tracking-widest h-12"
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSubmit}
-                            disabled={loading}
-                            className="flex-[2] bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold uppercase text-xs tracking-widest h-12 shadow-lg shadow-red-500/20"
-                        >
-                            {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                            Update
-                        </Button>
-                    </div>
-                </div>
+                </ScrollArea>
             </DialogContent>
         </Dialog>
     );

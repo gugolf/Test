@@ -193,6 +193,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const updateData: any = {};
         if (candidate_status !== undefined) updateData.candidate_status = candidate_status;
         if (resume_url !== undefined) updateData.resume_url = resume_url;
+        if (body.photo !== undefined) updateData.photo = body.photo;
+        if (body.blacklist_note !== undefined) updateData.blacklist_note = body.blacklist_note;
+
         // Map other fields carefully to match DB columns
         if (name !== undefined) updateData.name = name;
         if (email !== undefined) updateData.email = email;
@@ -206,8 +209,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             return NextResponse.json({ message: "No fields to update" });
         }
 
-        const { error } = await adminAuthClient
-            .from('Candidate Profile')
+        const { error } = await (adminAuthClient
+            .from('Candidate Profile') as any)
             .update(updateData)
             .eq('candidate_id', candidateId);
 

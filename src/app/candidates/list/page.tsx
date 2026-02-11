@@ -102,7 +102,8 @@ export default function CandidateListPage() {
         companies: [] as string[], // Dependent
 
         ageMin: "",
-        ageMax: ""
+        ageMax: "",
+        experienceType: "All" as 'Current' | 'Past' | 'All'
     });
 
     // Master Data
@@ -173,6 +174,7 @@ export default function CandidateListPage() {
 
                         ageMin: filters.ageMin ? parseInt(filters.ageMin) : undefined,
                         ageMax: filters.ageMax ? parseInt(filters.ageMax) : undefined,
+                        experienceType: filters.experienceType,
                     },
                     search: searchTerm,
                     page: currentPage,
@@ -205,12 +207,19 @@ export default function CandidateListPage() {
         setFilters({
             countries: [], industries: [], jobGroupings: [], jobFunctions: [], statuses: [], genders: [], companies: [],
             groups: [], positions: [],
-            ageMin: "", ageMax: ""
+            ageMin: "",
+            ageMax: "",
+            experienceType: "All"
         });
         setSearchTerm("");
     };
 
-    // Helper to toggle filter array
+    // Helper to update filter array directly (for batch updates)
+    const setFilterArray = (key: keyof typeof filters, values: string[]) => {
+        setFilters(prev => ({ ...prev, [key]: values }));
+    };
+
+    // Helper to toggle filter array (kept for chips, but could be refactored)
     const toggleFilter = (key: keyof typeof filters, value: string) => {
         setFilters(prev => {
             const current = (prev as any)[key] as string[];
@@ -242,10 +251,10 @@ export default function CandidateListPage() {
                                     if (type === 'global') {
                                         setSearchTerm(term);
                                     } else if (type === 'company') {
-                                        toggleFilter('companies', term);
+                                        setFilterArray('companies', [...filters.companies, term]);
                                         setSearchTerm(""); // Clear global search if filter applied
                                     } else if (type === 'position') {
-                                        toggleFilter('positions', term);
+                                        setFilterArray('positions', [...filters.positions, term]);
                                         setSearchTerm("");
                                     }
                                 }}
@@ -296,6 +305,26 @@ export default function CandidateListPage() {
                 {showFilters && (
                     <div className="pt-2 border-t border-dashed animate-in slide-in-from-top-2 fade-in duration-200 space-y-3">
                         <div className="flex flex-wrap gap-2 items-center">
+                            {/* NEW: Experience Type Filter */}
+                            <div className="flex items-center bg-secondary/30 p-0.5 rounded-lg border border-primary/10 h-9">
+                                {['All', 'Current', 'Past'].map((type) => (
+                                    <button
+                                        key={type}
+                                        onClick={() => setFilters(prev => ({ ...prev, experienceType: type as any }))}
+                                        className={cn(
+                                            "px-3 h-8 text-[10px] font-bold transition-all rounded-md",
+                                            filters.experienceType === type
+                                                ? "bg-primary text-white shadow-sm"
+                                                : "text-muted-foreground hover:text-primary hover:bg-white/50"
+                                        )}
+                                    >
+                                        {type === 'All' ? 'Exp: All' : type}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="h-4 w-px bg-border mx-1" />
+
                             {/* Filter Dropdowns using Popover + Command for robustness */}
 
                             {/* 1. Position (ASYNC) */}
@@ -303,7 +332,7 @@ export default function CandidateListPage() {
                                 label="Position"
                                 icon={Briefcase}
                                 selected={filters.positions}
-                                onChange={(v: string) => toggleFilter('positions', v)}
+                                onChange={(v: string[]) => setFilterArray('positions', v)}
                                 fetcher={searchPositions}
                                 placeholder="Search Position..."
                                 filters={filters} // [NEW] Pass context
@@ -314,14 +343,14 @@ export default function CandidateListPage() {
                                 label="Company"
                                 icon={Layers}
                                 selected={filters.companies}
-                                onChange={(v: string) => toggleFilter('companies', v)}
+                                onChange={(v: string[]) => setFilterArray('companies', v)}
                                 fetcher={searchCompanies}
                                 placeholder="Search Company..."
                                 filters={filters} // [NEW] Pass context
                             />
 
                             {/* 3. Gender */}
-                            <FilterMultiSelect label="Gender" icon={User} options={options.genders} selected={filters.genders} onChange={(v: string) => toggleFilter('genders', v)} />
+                            <FilterMultiSelect label="Gender" icon={User} options={options.genders} selected={filters.genders} onChange={(v: string[]) => setFilterArray('genders', v)} />
 
                             {/* 4. Age Inputs */}
                             <div className="flex items-center gap-2 bg-secondary/30 px-3 py-1.5 rounded-md border border-transparent focus-within:border-primary/50 transition-colors h-9">
@@ -338,22 +367,22 @@ export default function CandidateListPage() {
                             </div>
 
                             {/* 5. Status */}
-                            <FilterMultiSelect label="Status" icon={Tags} options={options.statuses} selected={filters.statuses} onChange={(v: string) => toggleFilter('statuses', v)} />
+                            <FilterMultiSelect label="Status" icon={Tags} options={options.statuses} selected={filters.statuses} onChange={(v: string[]) => setFilterArray('statuses', v)} />
 
                             {/* 6. Country */}
-                            <FilterMultiSelect label="Country" icon={MapPin} options={options.countries} selected={filters.countries} onChange={(v: string) => toggleFilter('countries', v)} />
+                            <FilterMultiSelect label="Country" icon={MapPin} options={options.countries} selected={filters.countries} onChange={(v: string[]) => setFilterArray('countries', v)} />
 
                             {/* 7. Company Group */}
-                            <FilterMultiSelect label="Company Group" icon={Building} options={options.groups} selected={filters.groups} onChange={(v: string) => toggleFilter('groups', v)} />
+                            <FilterMultiSelect label="Company Group" icon={Building} options={options.groups} selected={filters.groups} onChange={(v: string[]) => setFilterArray('groups', v)} />
 
                             {/* 8. Industry */}
-                            <FilterMultiSelect label="Industry" icon={Building} options={options.industries} selected={filters.industries} onChange={(v: string) => toggleFilter('industries', v)} />
+                            <FilterMultiSelect label="Industry" icon={Building} options={options.industries} selected={filters.industries} onChange={(v: string[]) => setFilterArray('industries', v)} />
 
                             {/* 9. Job Group */}
-                            <FilterMultiSelect label="Job Group" icon={Briefcase} options={options.jobGroupings} selected={filters.jobGroupings} onChange={(v: string) => toggleFilter('jobGroupings', v)} />
+                            <FilterMultiSelect label="Job Group" icon={Briefcase} options={options.jobGroupings} selected={filters.jobGroupings} onChange={(v: string[]) => setFilterArray('jobGroupings', v)} />
 
                             {/* 10. Job Function */}
-                            <FilterMultiSelect label="Job Function" icon={Layers} options={options.jobFunctions} selected={filters.jobFunctions} onChange={(v: string) => toggleFilter('jobFunctions', v)} />
+                            <FilterMultiSelect label="Job Function" icon={Layers} options={options.jobFunctions} selected={filters.jobFunctions} onChange={(v: string[]) => setFilterArray('jobFunctions', v)} />
                         </div>
 
                         {/* Active Filter Chips */}
@@ -395,6 +424,15 @@ export default function CandidateListPage() {
                             {filters.genders.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('genders', c)} color="cyan" />)}
                             {filters.jobFunctions.map(c => <Chip key={c} label={c} onRemove={() => toggleFilter('jobFunctions', c)} color="pink" />)}
 
+                            {filters.experienceType !== 'All' && (
+                                <Badge variant="secondary" className="gap-1 h-7 border-blue-200 bg-blue-50 text-blue-700">
+                                    {filters.experienceType === 'Current' ? 'Current Roles Only' : 'Past Roles Only'}
+                                    <X
+                                        className="h-3 w-3 cursor-pointer hover:text-blue-900"
+                                        onClick={() => setFilters(prev => ({ ...prev, experienceType: 'All' }))}
+                                    />
+                                </Badge>
+                            )}
                             {(Object.values(filters).some(v => Array.isArray(v) ? v.length > 0 : v)) && (
                                 <Button variant="ghost" size="icon" className="h-5 w-5 ml-auto text-destructive hover:bg-destructive/10 rounded-full" onClick={clearAll} title="Clear All">
                                     <X className="h-3 w-3" />
@@ -513,6 +551,32 @@ function GroupedFilterChip({ label, count, items, onClear, color }: any) {
 
 function FilterMultiSelect({ label, icon: Icon, options = [], selected, onChange, disabled }: any) {
     const [open, setOpen] = useState(false);
+    const [tempSelected, setTempSelected] = useState<string[]>(selected);
+
+    // Sync tempSelected with parent selected when popover opens
+    useEffect(() => {
+        if (open) {
+            setTempSelected(selected);
+        }
+    }, [open, selected]);
+
+    const handleToggle = (option: string) => {
+        setTempSelected(prev =>
+            prev.includes(option)
+                ? prev.filter(i => i !== option)
+                : [...prev, option]
+        );
+    };
+
+    const handleApply = () => {
+        onChange(tempSelected);
+        setOpen(false);
+    };
+
+    const handleClear = () => {
+        setTempSelected([]);
+    };
+
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -525,21 +589,19 @@ function FilterMultiSelect({ label, icon: Icon, options = [], selected, onChange
                     <ChevronDown className="ml-auto h-3 w-3 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="p-0 w-[200px]" align="start">
+            <PopoverContent className="p-0 w-[240px]" align="start">
                 <Command>
                     <CommandInput placeholder={`Search ${label}...`} className="h-9" />
                     <CommandList>
                         <CommandEmpty>No results found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-y-auto">
                             {options.map((option: string) => {
-                                const isSelected = selected.includes(option);
+                                const isSelected = tempSelected.includes(option);
                                 return (
                                     <CommandItem
                                         key={option}
                                         value={option}
-                                        onSelect={() => {
-                                            onChange(option);
-                                        }}
+                                        onSelect={() => handleToggle(option)}
                                     >
                                         <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary", isSelected ? "bg-primary text-primary-foreground" : "opacity-50 [&_svg]:invisible")}>
                                             <Check className={cn("h-4 w-4")} />
@@ -549,17 +611,51 @@ function FilterMultiSelect({ label, icon: Icon, options = [], selected, onChange
                                 );
                             })}
                         </CommandGroup>
-                        {selected.length > 0 && (
-                            <>
-                                <CommandSeparator />
-                                <CommandGroup>
-                                    <CommandItem onSelect={() => selected.forEach((s: string) => onChange(s))} className="justify-center text-center">
-                                        Clear filters
-                                    </CommandItem>
+                        {tempSelected.length > 0 && (
+                            <div className="border-t pt-1 mt-1">
+                                <CommandGroup heading="Selected Current">
+                                    {tempSelected.map((item: string) => {
+                                        if (options.includes(item)) return null;
+                                        return (
+                                            <CommandItem key={item} value={item} onSelect={() => handleToggle(item)}>
+                                                <div className="mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground">
+                                                    <Check className="h-4 w-4" />
+                                                </div>
+                                                {item}
+                                            </CommandItem>
+                                        );
+                                    })}
                                 </CommandGroup>
-                            </>
+                            </div>
                         )}
                     </CommandList>
+                    <div className="flex items-center justify-between p-2 border-t bg-slate-50">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-[10px] font-bold text-slate-500 hover:text-red-500 px-2"
+                            onClick={handleClear}
+                        >
+                            Clear
+                        </Button>
+                        <div className="flex gap-1.5">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-[10px] px-2"
+                                onClick={() => setOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="h-8 text-[10px] px-3 bg-primary text-white font-bold"
+                                onClick={handleApply}
+                            >
+                                Apply ({tempSelected.length})
+                            </Button>
+                        </div>
+                    </div>
                 </Command>
             </PopoverContent>
         </Popover>

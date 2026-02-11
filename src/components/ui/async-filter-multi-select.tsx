@@ -25,11 +25,11 @@ export interface AsyncFilterMultiSelectProps {
     label: string;
     icon?: React.ElementType;
     selected: string[];
-    onChange: (value: string) => void;
-    fetcher: (query: string, limit?: number, filters?: any) => Promise<string[]>; // Updated signature match
+    onChange: (values: string[]) => void; // Updated to accept array
+    fetcher: (query: string, limit?: number, filters?: any) => Promise<string[]>;
     initialOptions?: string[];
     placeholder?: string;
-    filters?: any; // Added filters prop
+    filters?: any;
 }
 
 const DEFAULT_OPTIONS: string[] = [];
@@ -49,6 +49,33 @@ export function AsyncFilterMultiSelect({
     const [options, setOptions] = React.useState<string[]>(initialOptions);
     const [loading, setLoading] = React.useState(false);
 
+    // Batching State
+    const [tempSelected, setTempSelected] = React.useState<string[]>(selected);
+
+    // Sync tempSelected with parent selected when popover opens
+    React.useEffect(() => {
+        if (open) {
+            setTempSelected(selected);
+        }
+    }, [open, selected]);
+
+    const handleToggle = (option: string) => {
+        setTempSelected(prev =>
+            prev.includes(option)
+                ? prev.filter(i => i !== option)
+                : [...prev, option]
+        );
+    };
+
+    const handleApply = () => {
+        onChange(tempSelected);
+        setOpen(false);
+    };
+
+    const handleClear = () => {
+        setTempSelected([]);
+    };
+
     // Debounce the search query
     const [debouncedQuery, setDebouncedQuery] = React.useState(query);
 
@@ -64,8 +91,6 @@ export function AsyncFilterMultiSelect({
         let active = true;
 
         async function fetchData() {
-            // If no query and no filters, and we have initial options, use them.
-            // But if we have filters, we likely want to fetch new options even if query is empty.
             const hasFilters = filters && Object.values(filters).some(v => Array.isArray(v) ? v.length > 0 : !!v);
 
             if (!debouncedQuery && !hasFilters && initialOptions.length > 0) {
@@ -73,22 +98,10 @@ export function AsyncFilterMultiSelect({
                 return;
             }
 
-            // If no query and no filters and no initial options, we normally don't fetch (to avoid full loose scan),
-            // UNLESS the user explicitly opened the menu? 
-            // For now, let's allow fetching defaults if it's "Position" or "Company" to just show *popular* ones?
-            // Current strict logic: if (!query) return []; in server action.
-
-            // We'll proceed to fetch. Server action will handle empty query policies.
-
             setLoading(true);
             try {
-                // Pass limit=50 usually (server action default)
-                // We must pass filters
-                const results = await fetcher(debouncedQuery || "", 50, filters);
-
-                if (active) {
-                    setOptions(results || []);
-                }
+                const results = await fetcher(debouncedQuery || "", 1000, filters);
+                if (active) setOptions(results || []);
             } catch (error) {
                 console.error("Async Select Fetch Error:", error);
                 if (active) setOptions([]);
@@ -97,13 +110,8 @@ export function AsyncFilterMultiSelect({
             }
         }
 
-        // Trigger fetch when query changes OR filters change OR open state changes (if we want to refresh on open)
-        // For now, dependencies are debouncedQuery and filters.
         fetchData();
-
-        return () => {
-            active = false;
-        };
+        return () => { active = false; };
     }, [debouncedQuery, filters, fetcher, initialOptions]);
 
 
@@ -135,10 +143,6 @@ export function AsyncFilterMultiSelect({
             </PopoverTrigger>
             <PopoverContent className="w-[350px] p-0" align="start">
                 <Command shouldFilter={false}>
-                    {/* 
-              IMPORTANT: We set shouldFilter={false} on Command because we are filtering/searching server-side.
-              The CommandInput just captures the text. 
-          */}
                     <CommandInput
                         placeholder={placeholder}
                         value={query}
@@ -160,15 +164,9 @@ export function AsyncFilterMultiSelect({
                                             size="sm"
                                             className="h-5 text-[10px] px-2 hover:bg-background"
                                             onClick={() => {
-                                                const newItems = options.filter(o => !selected.includes(o));
+                                                const newItems = options.filter(o => !tempSelected.includes(o));
                                                 if (newItems.length > 0) {
-                                                    // We need to call onChange for EACH item, or better, expose a bulkOnChange?
-                                                    // Since onChange is (value: string) => void, we can't do bulk easily without changing props.
-                                                    // Let's iterate for now (React batching should handle it, or we might flicker).
-                                                    // actually, we should probably update the parent to accept arrays if possible, but let's stick to the interface.
-                                                    // Better: check if we should change the interface. The parent 'toggleFilter' takes a single value.
-                                                    // We can try to loop.
-                                                    newItems.forEach(item => onChange(item));
+                                                    setTempSelected(prev => [...prev, ...newItems]);
                                                 }
                                             }}
                                         >
@@ -178,14 +176,12 @@ export function AsyncFilterMultiSelect({
                                 )}
                                 <CommandGroup heading={query ? "Search Results" : "Recent / Suggested"}>
                                     {options.map((option) => {
-                                        const isSelected = selected.includes(option);
+                                        const isSelected = tempSelected.includes(option);
                                         return (
                                             <CommandItem
                                                 key={option}
                                                 value={option}
-                                                onSelect={() => {
-                                                    onChange(option);
-                                                }}
+                                                onSelect={() => handleToggle(option)}
                                             >
                                                 <div
                                                     className={cn(
@@ -197,7 +193,6 @@ export function AsyncFilterMultiSelect({
                                                 >
                                                     <Check className={cn("h-4 w-4")} />
                                                 </div>
-                                                {/* Highlighting Logic */}
                                                 <span className="truncate">
                                                     {(() => {
                                                         if (!query) return option;
@@ -214,19 +209,16 @@ export function AsyncFilterMultiSelect({
                             </>
                         )}
 
-                        {selected.length > 0 && (
+                        {tempSelected.length > 0 && (
                             <div className="border-t pt-1 mt-1">
-                                <CommandGroup heading="Selected">
-                                    {selected.map((item) => {
-                                        // Only show if not already in the list above to avoid duplicates?
-                                        // Or just show them all in a separate group.
+                                <CommandGroup heading="Selected Current">
+                                    {tempSelected.map((item) => {
                                         if (options.includes(item)) return null;
-
                                         return (
                                             <CommandItem
                                                 key={item}
                                                 value={item}
-                                                onSelect={() => onChange(item)}
+                                                onSelect={() => handleToggle(item)}
                                             >
                                                 <div className="mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary bg-primary text-primary-foreground">
                                                     <Check className="h-4 w-4" />
@@ -238,8 +230,34 @@ export function AsyncFilterMultiSelect({
                                 </CommandGroup>
                             </div>
                         )}
-
                     </CommandList>
+                    <div className="flex items-center justify-between p-2 border-t bg-slate-50">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-xs font-bold text-slate-500 hover:text-red-500"
+                            onClick={handleClear}
+                        >
+                            Clear All
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs px-3"
+                                onClick={() => setOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="h-8 text-xs px-4 bg-primary text-white font-bold"
+                                onClick={handleApply}
+                            >
+                                Apply Filters ({tempSelected.length})
+                            </Button>
+                        </div>
+                    </div>
                 </Command>
             </PopoverContent>
         </Popover>

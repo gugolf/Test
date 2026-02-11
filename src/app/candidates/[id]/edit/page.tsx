@@ -65,7 +65,8 @@ export default function EditCandidatePage({ params }: { params: Promise<{ id: st
         // Enhance Fields
         skills: "",
         education: "",
-        languages: ""
+        languages: "",
+        blacklist_note: ""
     });
 
     useEffect(() => {
@@ -97,7 +98,8 @@ export default function EditCandidatePage({ params }: { params: Promise<{ id: st
                     age: data.age || "",
                     skills: data.other_skill || data.enhancement?.skills || "", // Try both
                     education: data.enhancement?.education_summary || "",
-                    languages: data.language_skill || data.enhancement?.languages || ""
+                    languages: data.language_skill || data.enhancement?.languages || "",
+                    blacklist_note: data.blacklist_note || ""
                 });
 
                 if (data.photo) setPhotoPreview(data.photo);
@@ -197,7 +199,8 @@ export default function EditCandidatePage({ params }: { params: Promise<{ id: st
                 year_of_bachelor_education: formData.year_of_bachelor_education,
                 age: formData.age,
                 photo: photoUrl,
-                resume_url: resumeUrl
+                resume_url: resumeUrl,
+                blacklist_note: formData.blacklist_note
             };
 
             const res = await fetch(`/api/candidates/${candidateId}`, {
@@ -411,6 +414,23 @@ export default function EditCandidatePage({ params }: { params: Promise<{ id: st
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Blacklist Reason */}
+                                {formData.candidate_status === "Blacklist" && (
+                                    <div className="p-4 bg-rose-50 rounded-xl border border-rose-100 space-y-2 animate-in slide-in-from-top-2">
+                                        <Label htmlFor="blacklist_note" className="text-rose-700 font-bold flex items-center gap-2">
+                                            <X className="h-4 w-4" /> Blacklist Reason (Required)
+                                        </Label>
+                                        <textarea
+                                            id="blacklist_note"
+                                            placeholder="Please describe why this candidate is blacklisted..."
+                                            className="min-h-[100px] w-full rounded-md border border-rose-200 bg-white px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            value={formData.blacklist_note}
+                                            onChange={handleChange}
+                                            required
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
