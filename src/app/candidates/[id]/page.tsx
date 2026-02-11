@@ -135,6 +135,21 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                 </div>
             </div>
 
+            {/* --- BLACKLIST ALERT --- */}
+            {candidate.candidate_status === "Blacklist" && candidate.blacklist_note && (
+                <div className="bg-rose-50 border-2 border-rose-200 rounded-xl p-6 flex flex-col md:flex-row gap-5 items-center shadow-sm animate-in zoom-in duration-500">
+                    <div className="p-4 bg-rose-500 text-white rounded-full shadow-lg shadow-rose-200">
+                        <AlertCircle className="h-8 w-8 stroke-[3px]" />
+                    </div>
+                    <div className="flex-1 text-center md:text-left">
+                        <h3 className="text-xl font-black text-rose-700 uppercase tracking-tight">Candidate Blacklisted</h3>
+                        <p className="mt-1 text-rose-600 font-bold leading-snug">
+                            {candidate.blacklist_note}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-12 gap-6">
 
                 {/* --- LEFT SIDEBAR (Info) --- */}

@@ -111,6 +111,7 @@ export default function ResignationsPage() {
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Business Unit</TableHead>
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Resigned Date</TableHead>
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Reason</TableHead>
+                                    <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Destination</TableHead>
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6">Notes</TableHead>
                                     <TableHead className="font-black text-slate-600 uppercase text-[10px] tracking-widest py-6 pr-8 text-right">Action</TableHead>
                                 </TableRow>
@@ -152,6 +153,12 @@ export default function ResignationsPage() {
                                                 <Badge variant="outline" className="border-slate-200 text-slate-600 font-bold text-[10px] uppercase py-0.5">
                                                     {r.resignation_reason_test || 'Unspecified'}
                                                 </Badge>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col max-w-[150px]">
+                                                <span className="font-bold text-slate-700 text-sm truncate">{r.company_destination || 'N/A'}</span>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter truncate">{r.new_position}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>

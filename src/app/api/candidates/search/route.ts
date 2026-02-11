@@ -7,80 +7,74 @@ export async function POST(req: Request) {
         const { filters, page = 1, pageSize = 20, search } = await req.json();
         const offset = (page - 1) * pageSize;
 
-        // --- PRE-CALCULATE EXPERIENCE FILTERS ---
-        // We do this first so we can use the restricted candidate pool for both:
-        // 1. Scoping the smart search (e.g. "Director" only within "Adidas")
-        // 2. Filtering the final profile list
-
+        // --- 1. PRE-CALCULATE EXPERIENCE FILTERS ---
+        // These are hard filters from the dropdowns (Position, Company, etc.)
         const normalizedFilters = {
             companies: filters?.company || filters?.companies,
             positions: filters?.position || filters?.positions,
             countries: filters?.country || filters?.countries,
             industries: filters?.industry || filters?.industries,
             groups: filters?.group || filters?.groups,
+            experienceType: filters?.experienceType
         };
 
         const expCandidateIds = await getCandidateIdsByExperienceFilters(normalizedFilters);
 
-        let profileQuery = adminAuthClient
-            .from('Candidate Profile')
-            .select('*', { count: 'exact' });
+        // --- 2. BASE QUERY INITIALIZATION ---
+        let profileQuery: any;
 
-        // --- SEARCH LOGIC ---
-        let searchCandidateIds: string[] = [];
+        if (expCandidateIds !== null) {
+            // Experience filters are active
+            if (expCandidateIds.length === 0) {
+                return NextResponse.json({ data: [], total: 0, page, pageSize });
+            }
+            // Use RPC to fetch profiles by ID to avoid URL length limit (uses POST body for IDs)
+            profileQuery = (adminAuthClient.rpc as any)('get_profiles_by_ids', {
+                p_ids: expCandidateIds
+            });
+        } else {
+            // No experience-specific filters (global search mode)
+            profileQuery = adminAuthClient.from('Candidate Profile').select('*');
+        }
 
+        // Ensure count is fetched
+        profileQuery = profileQuery.select('*', { count: 'exact' });
+
+        // --- 3. SMART SEARCH LOGIC (if search keyword present) ---
         if (search) {
-            // 1. Search in Profile (Name, Email, ID)
-            profileQuery = profileQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%,candidate_id.ilike.%${search}%`);
-
-            // 2. Search in Experiences (Company, Position)
-            // Optimization: If we already have a candidate pool from filters, restricts the search to them.
+            // Find candidate IDs where the keyword matches in their experience history
             let experienceSearchQuery = adminAuthClient
                 .from('candidate_experiences')
                 .select('candidate_id')
-                .or(`company.ilike.%${search}%,position.ilike.%${search}%`);
+                .or(`company.ilike.%${search}%,position.ilike.%${search}%`)
+                .limit(500); // Limit matches to top 500 for URL safety in the .or filter below
 
-            if (expCandidateIds !== null) {
-                // If we have < 10000 IDs, we can filter directly.
-                // If massive, this might be slow, but better than global search.
-                if (expCandidateIds.length > 0) {
-                    // Restrict search to already filtered candidates
+            // If we already have a hard filter pool, restrict search to it
+            if (expCandidateIds !== null && expCandidateIds.length > 0) {
+                // If the set is massive, this .in() might still be large but we've already 
+                // secured the base query. The 경험 search is secondary.
+                // To be safe, we only do this if expCandidateIds is reasonably sized for URL params.
+                if (expCandidateIds.length < 1000) {
                     experienceSearchQuery = experienceSearchQuery.in('candidate_id', expCandidateIds);
-                } else {
-                    // Filter returned 0 candidates. Smart search in experiences should also return 0.
-                    // We can skip the query. But let's let it run with empty IN to be safe/consistent?
-                    // Or just skip.
                 }
             }
 
-            // Only run if we either have NO filters (global search) OR we have matching candidates
-            if (expCandidateIds === null || expCandidateIds.length > 0) {
-                const { data: expSearchMatches, error: expSearchError } = await experienceSearchQuery.limit(5000);
+            const { data: expSearchMatches } = await experienceSearchQuery;
+            const searchExpIds = Array.from(new Set(expSearchMatches?.map((e: any) => e.candidate_id) || []));
 
-                if (!expSearchError && expSearchMatches && expSearchMatches.length > 0) {
-                    const ids = expSearchMatches.map((e: any) => e.candidate_id);
-                    // Deduplicate
-                    searchCandidateIds = Array.from(new Set(ids));
-                }
-            }
-        }
-
-        // Apply Search Filter with Experience IDs support
-        if (search) {
+            // Combine Profile Search (Name/Email) with Experience Search Matches
             let orString = `name.ilike.%${search}%,email.ilike.%${search}%,candidate_id.ilike.%${search}%`;
 
-            if (searchCandidateIds.length > 0) {
-                // Note: syntax `candidate_id.in.("id1","id2")`
-                // We limit to top 100 matches from experience to prevent URL overflow.
-                const limitedIds = searchCandidateIds.slice(0, 100);
-                const idList = limitedIds.map(id => `"${id}"`).join(',');
+            if (searchExpIds.length > 0) {
+                // Limit to top 150 IDs to keep URL within safe limits (PostgREST syntax)
+                const idList = searchExpIds.slice(0, 150).map(id => `"${id}"`).join(',');
                 orString += `,candidate_id.in.(${idList})`;
             }
 
             profileQuery = profileQuery.or(orString);
         }
 
-        // --- APPLY OTHER PROFILE FILTERS ---
+        // --- 4. APPLY REMAINING ATTRIBUTE FILTERS ---
         if (filters?.gender?.length) profileQuery = profileQuery.in('gender', filters.gender);
         if (filters?.status?.length) profileQuery = profileQuery.in('candidate_status', filters.status);
         if (filters?.jobGrouping?.length) profileQuery = profileQuery.in('job_grouping', filters.jobGrouping);
@@ -88,15 +82,13 @@ export async function POST(req: Request) {
         if (filters?.ageMin) profileQuery = profileQuery.gte('age', filters.ageMin);
         if (filters?.ageMax) profileQuery = profileQuery.lte('age', filters.ageMax);
 
-        // --- Aging Group Filter ---
+        // Aging Group Filter
         if (filters?.agingGroup) {
             const now = new Date();
             const d30 = new Date(now); d30.setDate(d30.getDate() - 30);
             const d90 = new Date(now); d90.setDate(d90.getDate() - 90);
             const d180 = new Date(now); d180.setDate(d180.getDate() - 180);
 
-            // Migration completed: modify_date is now ISO 8601 string.
-            // Direct comparison works correctly.
             const field = 'modify_date';
 
             if (filters.agingGroup === 'fresh') {
@@ -110,54 +102,57 @@ export async function POST(req: Request) {
             }
         }
 
-        // --- APPLY EXPERIENCE FILTERS (Intersection) ---
-        if (expCandidateIds !== null) {
-            if (expCandidateIds.length === 0) {
-                return NextResponse.json({ data: [], total: 0, page, pageSize });
-            }
-            // Apply ID filter to Profile Query
-            profileQuery = profileQuery.in('candidate_id', expCandidateIds);
+        // --- EXECUTE UNIFIED SEARCH RPC ---
+        const { data, error } = await (adminAuthClient.rpc as any)('search_candidates_robust', {
+            p_search: search || null,
+            p_companies: normalizedFilters.companies || null,
+            p_positions: normalizedFilters.positions || null,
+            p_countries: normalizedFilters.countries || null,
+            p_industries: normalizedFilters.industries || null,
+            p_groups: normalizedFilters.groups || null,
+            p_exp_type: normalizedFilters.experienceType || 'All',
+            p_genders: filters?.gender || null,
+            p_statuses: filters?.status || null,
+            p_job_groupings: filters?.jobGrouping || null,
+            p_job_functions: filters?.jobFunction || null,
+            p_age_min: filters?.ageMin ? parseInt(filters.ageMin) : null,
+            p_age_max: filters?.ageMax ? parseInt(filters.ageMax) : null,
+            p_offset: offset,
+            p_limit: pageSize
+        });
+
+        if (error) throw error;
+
+        const totalCount = data?.[0]?.total_count || 0;
+        const profiles = data || [];
+
+        // --- 6. HYDRATE EXPERIENCES ---
+        const pageCandidateIds = profiles.map((p: any) => p.candidate_id).filter(Boolean);
+
+        let fullExp: any[] = [];
+        if (pageCandidateIds.length > 0) {
+            const { data: expData, error: expError } = await adminAuthClient
+                .from('candidate_experiences')
+                .select('*')
+                .in('candidate_id', pageCandidateIds)
+                .order('start_date', { ascending: false });
+
+            if (expError) throw expError;
+            fullExp = expData || [];
         }
 
-        // --- EXECUTE PAGINATED PROFILE QUERY ---
-        // Now running the final query on Profiles (either filtered by IDs from Exp, or just raw Profile filters)
-        // User Request: Sort by candidate_id ASC (numeric string C00001...)
-        const { data: profiles, count, error: profileError } = await profileQuery
-            .range(offset, offset + pageSize - 1)
-            .order('candidate_id', { ascending: true }); // Changed to ASC // Show recently modified first
-
-        if (profileError) throw profileError;
-
-        // --- HYDRATE EXPERIENCES ---
-        // Fetch experiences ONLY for the displayed page of candidates
-        const pageCandidateIds = (profiles as any)?.map((p: any) => p.candidate_id) || [];
-
-        const fullExpQuery = adminAuthClient
-            .from('candidate_experiences')
-            .select('*')
-            .in('candidate_id', pageCandidateIds)
-            .order('start_date', { ascending: false });
-
-        // Optional: If we want to highlight "matching" experiences vs "all", we could do logic here.
-        // For now, return ALL experiences for the candidate so the timeline is complete.
-
-        const { data: fullExp, error: fullExpError } = await fullExpQuery;
-        if (fullExpError) throw fullExpError;
-        // Merge Profile Data
-        const finalResults = (profiles as any).map((p: any) => ({
+        const finalResults = profiles.map((p: any) => ({
             ...p,
-            candidate_id: p.candidate_id, // Ensure explicit mapping
-            match_score: 0, // Simplified for now
-            skills_match: [],
-            experiences: (fullExp as any)?.filter((e: any) => e.candidate_id === p.candidate_id) || []
+            experiences: fullExp.filter((e: any) => e.candidate_id === p.candidate_id)
         }));
 
         return NextResponse.json({
             data: finalResults,
-            total: count
+            total: parseInt(totalCount.toString())
         });
 
     } catch (error: any) {
+        console.error("Robust Search Error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

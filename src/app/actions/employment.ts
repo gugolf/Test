@@ -101,3 +101,32 @@ export async function updateEmploymentRecord(id: string, data: any) {
     revalidatePath('/requisitions/placements');
     return { success: true };
 }
+
+export async function getResignationReasons() {
+    const supabase = adminAuthClient as any;
+    const { data, error } = await supabase
+        .from('resignation_reason_master')
+        .select('reason')
+        .order('reason', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching resignation reasons:', error);
+        return [];
+    }
+
+    return data.map((r: any) => r.reason);
+}
+
+export async function addResignationReason(reason: string) {
+    const supabase = adminAuthClient as any;
+    const { error } = await supabase
+        .from('resignation_reason_master')
+        .insert([{ reason }]);
+
+    if (error) {
+        console.error('Error adding resignation reason:', error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+}
