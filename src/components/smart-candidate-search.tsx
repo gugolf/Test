@@ -131,7 +131,7 @@ export function SmartCandidateSearch({
                                     <CommandGroup heading="Global Search">
                                         <CommandItem onSelect={() => handleSelect(query, 'global')}>
                                             <Search className="mr-2 h-4 w-4 text-muted-foreground" />
-                                            <span>Search <strong>"{query}"</strong> in All Fields</span>
+                                            <span>Search <strong>&quot;{query}&quot;</strong> in All Fields</span>
                                         </CommandItem>
                                     </CommandGroup>
 
@@ -162,11 +162,11 @@ export function SmartCandidateSearch({
                                         <CommandGroup heading="Filters">
                                             <CommandItem onSelect={() => handleSelect(query, 'company')}>
                                                 <Building className="mr-2 h-4 w-4 text-indigo-500" />
-                                                <span>Filter by Company: <strong>"{query}"</strong></span>
+                                                <span>Filter by Company: <strong>&quot;{query}&quot;</strong></span>
                                             </CommandItem>
                                             <CommandItem onSelect={() => handleSelect(query, 'position')}>
                                                 <Briefcase className="mr-2 h-4 w-4 text-pink-500" />
-                                                <span>Filter by Position: <strong>"{query}"</strong></span>
+                                                <span>Filter by Position: <strong>&quot;{query}&quot;</strong></span>
                                             </CommandItem>
                                         </CommandGroup>
                                     )}

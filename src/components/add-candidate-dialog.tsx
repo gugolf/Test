@@ -168,6 +168,7 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
             if (searchQuery.trim().length >= 2 || Object.values(filters).some(v => Array.isArray(v) ? v.length > 0 : v)) {
                 fetchCandidates(1, true);
             } else {
+                console.log("AddCandidateDialog: Clearing Results");
                 setResults([]);
                 setTotalResults(0);
             }
@@ -392,27 +393,29 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
                                 <FilterMultiSelect label="Function" icon={Briefcase} options={options.jobFunctions} selected={filters.jobFunctions} onChange={(v: string[]) => setFilters(prev => ({ ...prev, jobFunctions: v }))} />
                             </div>
                         )}
-
-                        {results.length > 0 && !searching && (
-                            <div className="flex items-center justify-between pt-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                                    <p className="text-xs font-bold uppercase text-slate-500 tracking-wider">
-                                        {results.length} of {totalResults} results
-                                    </p>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-[11px] uppercase font-black text-primary hover:bg-primary/10 transition-colors"
-                                    onClick={handleSelectAll}
-                                >
-                                    {results.every(c => selectedIds.includes(c.candidate_id) || existingIds.includes(c.candidate_id))
-                                        ? "Deselect All From View" : "Select All Available"}
-                                </Button>
-                            </div>
-                        )}
                     </div>
+
+
+                    {results.length > 0 && !searching && (
+                        <div className="flex items-center justify-between pt-1">
+                            <div className="flex items-center gap-2">
+                                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                                <p className="text-xs font-bold uppercase text-slate-500 tracking-wider">
+                                    {results.length} of {totalResults} results
+                                </p>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-[11px] uppercase font-black text-primary hover:bg-primary/10 transition-colors"
+                                onClick={handleSelectAll}
+                            >
+                                {results.every(c => selectedIds.includes(c.candidate_id) || existingIds.includes(c.candidate_id))
+                                    ? "Deselect All From View" : "Select All Available"}
+                            </Button>
+                        </div>
+                    )}
+
 
                     <div className="flex-1 overflow-y-auto px-7 py-3 min-h-[400px] bg-slate-50/40 dark:bg-slate-900/20">
                         {searching ? (
@@ -590,10 +593,10 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
                         </div>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             {/* Blacklist Warning Dialog */}
-            <Dialog open={showBlacklistAlert} onOpenChange={setShowBlacklistAlert}>
+            < Dialog open={showBlacklistAlert} onOpenChange={setShowBlacklistAlert} >
                 <DialogContent className="sm:max-w-md border-none shadow-2xl rounded-2xl overflow-hidden p-0">
                     <DialogHeader className="p-8 pb-4 bg-rose-50 border-b border-rose-100">
                         <div className="flex items-center gap-4">
@@ -652,7 +655,7 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
                         </div>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
         </>
     );
 }

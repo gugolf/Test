@@ -214,7 +214,7 @@ export function ResultsTable({
                         ))}
                     </AnimatePresence>
                 </div>
-            </Container >
+            </Container>
             <div className="bg-white/50 backdrop-blur-sm border-t p-2.5 text-[10px] font-medium text-center text-slate-400 flex items-center justify-center gap-2">
                 <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                 Found {results.length} qualified candidates for this search
