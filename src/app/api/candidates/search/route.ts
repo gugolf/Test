@@ -133,11 +133,11 @@ export async function POST(req: Request) {
         const pageCandidateIds = profiles.map((p: any) => p.candidate_id).filter(Boolean);
 
         let fullExp: any[] = [];
-        let blacklistNotes: Record<string, string> = {};
+        let noteResult: { data: any[] | null } = { data: null };
 
         if (pageCandidateIds.length > 0) {
             // Parallel fetch: Experiences and Blacklist Notes
-            const [expResult, noteResult] = await Promise.all([
+            const [expRes, noteRes] = await Promise.all([
                 adminAuthClient
                     .from('candidate_experiences')
                     .select('*')
@@ -146,27 +146,35 @@ export async function POST(req: Request) {
 
                 adminAuthClient
                     .from('Candidate Profile')
-                    .select('candidate_id, blacklist_note')
+                    .select('candidate_id, blacklist_note, linkedin, checked')
                     .in('candidate_id', pageCandidateIds)
             ]);
 
-            if (expResult.error) throw expResult.error;
-            fullExp = expResult.data || [];
-
-            if (noteResult.data) {
-                noteResult.data.forEach((n: any) => {
-                    if (n.blacklist_note) {
-                        blacklistNotes[n.candidate_id] = n.blacklist_note;
-                    }
-                });
-            }
+            if (expRes.error) throw expRes.error;
+            fullExp = expRes.data || [];
+            noteResult = noteRes;
         }
 
-        const finalResults = profiles.map((p: any) => ({
-            ...p,
-            blacklist_note: blacklistNotes[p.candidate_id] || null,
-            experiences: fullExp.filter((e: any) => e.candidate_id === p.candidate_id)
-        }));
+        // Merge extra data if we fetched it
+        const finalResults = profiles.map((p: any) => {
+            if (pageCandidateIds.length > 0 && noteResult.data) {
+                const extraData = noteResult.data.find((n: any) => n.candidate_id === p.candidate_id);
+                if (extraData) {
+                    return {
+                        ...p,
+                        blacklist_note: extraData.blacklist_note || null,
+                        linkedin: extraData.linkedin || p.linkedin,
+                        checked: extraData.checked || p.checked,
+                        experiences: fullExp.filter((e: any) => e.candidate_id === p.candidate_id)
+                    };
+                }
+            }
+            return {
+                ...p,
+                blacklist_note: null,
+                experiences: []
+            };
+        });
 
         return NextResponse.json({
             data: finalResults,

@@ -45,7 +45,7 @@ import {
     CommandSeparator,
 } from "@/components/ui/command";
 import { searchCandidates } from "@/app/actions/candidate";
-import { addCandidatesToJR, getExistingCandidateIdsForJR } from "@/app/actions/jr-candidates";
+import { bulkAddCandidatesToJR, getExistingCandidateIdsForJR } from "@/app/actions/jr-candidates";
 import { SmartCandidateSearch } from "@/components/smart-candidate-search";
 import { AsyncFilterMultiSelect } from "@/components/ui/async-filter-multi-select";
 import { searchCompanies, searchPositions } from "@/app/actions/candidate-filters";
@@ -70,10 +70,6 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
     const [existingIds, setExistingIds] = useState<string[]>([]);
     const [listType, setListType] = useState("Longlist");
     const [submitting, setSubmitting] = useState(false);
-
-    // Blacklist Alert State
-    const [showBlacklistAlert, setShowBlacklistAlert] = useState(false);
-    const [blacklistedInSelection, setBlacklistedInSelection] = useState<any[]>([]);
 
     // Filters
     const [showFilters, setShowFilters] = useState(false);
@@ -204,69 +200,45 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
         }
     };
 
-    const handleAdd = async (force: boolean = false) => {
+    const handleAdd = async () => {
         if (selectedIds.length === 0) return;
 
-        // Check for Blacklisted candidates if not forced
-        if (!force) {
-            const blacklisted = results.filter(c => selectedIds.includes(c.candidate_id) && c.candidate_status === "Blacklist");
-            if (blacklisted.length > 0) {
-                setBlacklistedInSelection(blacklisted);
-                setShowBlacklistAlert(true);
-                return;
-            }
-        }
+        // Build candidate list with names for server-side validation
+        const candidatesPayload = selectedIds.map(id => ({
+            id,
+            name: results.find(r => r.candidate_id === id)?.name || id
+        }));
 
         setSubmitting(true);
-        const { success, error } = await addCandidatesToJR(jrId, selectedIds, listType);
+        const result = await bulkAddCandidatesToJR(jrId, candidatesPayload, listType);
         setSubmitting(false);
 
-        if (success) {
-            toast.success(`Successfully added ${selectedIds.length} candidate(s)`);
-            onSuccess();
-            onOpenChange(false);
-            setSelectedIds([]);
-            setSearchQuery("");
-            setFilters({
-                countries: [], industries: [], positions: [], companies: [], jobFunctions: [], statuses: [], genders: [], ageMin: "", ageMax: "", experienceType: "All"
-            });
-        } else {
-            toast.error("Error: " + error);
-        }
-    };
-
-    const handleSkipBlacklisted = () => {
-        const blacklistIds = blacklistedInSelection.map(c => c.candidate_id);
-        const filteredIds = selectedIds.filter(id => !blacklistIds.includes(id));
-
-        if (filteredIds.length === 0) {
-            setSelectedIds([]);
-            setShowBlacklistAlert(false);
-            toast.info("All selected candidates were blacklisted and have been skipped.");
+        if (!result.success) {
+            toast.error("Error: " + result.error);
             return;
         }
 
-        // Proceed with filtered IDs
-        setSelectedIds(filteredIds);
-        setShowBlacklistAlert(false);
-        // We can't call handleAdd immediately because selectedIds state update might not be reflected yet
-        // So we call it with the manual filtered list
-        proceedWithFiltered(filteredIds);
-    };
-
-    const proceedWithFiltered = async (ids: string[]) => {
-        setSubmitting(true);
-        const { success, error } = await addCandidatesToJR(jrId, ids, listType);
-        setSubmitting(false);
-        if (success) {
-            toast.success(`Successfully added ${ids.length} candidate(s) (Skipped blacklisted)`);
-            onSuccess();
-            onOpenChange(false);
-            setSelectedIds([]);
-            setSearchQuery("");
-        } else {
-            toast.error("Error: " + error);
+        // Show informative feedback
+        if (result.added > 0) {
+            toast.success(`Added ${result.added} candidate(s) to pipeline`);
         }
+        if (result.blacklisted && result.blacklisted.length > 0) {
+            toast.warning(`Skipped ${result.blacklisted.length} blacklisted: ${result.blacklisted.slice(0, 3).join(', ')}${result.blacklisted.length > 3 ? '...' : ''}`, { duration: 6000 });
+        }
+        if (result.duplicates && result.duplicates.length > 0) {
+            toast.info(`Skipped ${result.duplicates.length} already in pipeline: ${result.duplicates.slice(0, 3).join(', ')}${result.duplicates.length > 3 ? '...' : ''}`, { duration: 6000 });
+        }
+        if (result.added === 0 && (!result.blacklisted?.length) && (!result.duplicates?.length)) {
+            toast.info("No candidates were added.");
+        }
+
+        onSuccess();
+        onOpenChange(false);
+        setSelectedIds([]);
+        setSearchQuery("");
+        setFilters({
+            countries: [], industries: [], positions: [], companies: [], jobFunctions: [], statuses: [], genders: [], ageMin: "", ageMax: "", experienceType: "All"
+        });
     };
 
     const toggleFilter = (key: keyof typeof filters, value: string) => {
@@ -417,7 +389,7 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
                     )}
 
 
-                    <div className="flex-1 overflow-y-auto px-7 py-3 min-h-[400px] bg-slate-50/40 dark:bg-slate-900/20">
+                    <div className="flex-1 overflow-y-auto px-7 py-3 min-h-0 bg-slate-50/40 dark:bg-slate-900/20">
                         {searching ? (
                             <div className="flex flex-col items-center justify-center h-full py-20 gap-4 opacity-70">
                                 <div className="relative">
@@ -581,7 +553,7 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
                                 <Button
                                     disabled={selectedIds.length === 0 || submitting}
                                     className="h-11 px-10 rounded-xl shadow-2xl shadow-primary/40 font-black text-sm uppercase tracking-wider min-w-[150px] transition-all hover:scale-[1.02] active:scale-95"
-                                    onClick={() => handleAdd(false)}
+                                    onClick={() => handleAdd()}
                                 >
                                     {submitting ? (
                                         <Loader2 className="h-5 w-5 animate-spin" />
@@ -593,69 +565,7 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
                         </div>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog >
-
-            {/* Blacklist Warning Dialog */}
-            < Dialog open={showBlacklistAlert} onOpenChange={setShowBlacklistAlert} >
-                <DialogContent className="sm:max-w-md border-none shadow-2xl rounded-2xl overflow-hidden p-0">
-                    <DialogHeader className="p-8 pb-4 bg-rose-50 border-b border-rose-100">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-200 animate-pulse">
-                                <AlertCircle className="h-8 w-8 stroke-[3px]" />
-                            </div>
-                            <DialogTitle className="text-2xl font-black text-rose-700 uppercase tracking-tight">
-                                Blacklist Warning!
-                            </DialogTitle>
-                        </div>
-                    </DialogHeader>
-                    <div className="p-8 space-y-4">
-                        <p className="text-base font-bold text-slate-700 leading-relaxed">
-                            You have selected <span className="text-rose-600 font-black">{blacklistedInSelection.length}</span> candidate(s) that are currently <span className="underline decoration-rose-500 decoration-4">Blacklisted</span>.
-                        </p>
-                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 max-h-40 overflow-y-auto">
-                            {blacklistedInSelection.map(c => (
-                                <div key={c.candidate_id} className="flex justify-between items-start py-2 border-b border-slate-100 last:border-0">
-                                    <div>
-                                        <p className="text-sm font-black text-slate-800">{c.name}</p>
-                                        <p className="text-xs font-medium text-rose-500 italic">Note: {c.blacklist_note || "No reason provided"}</p>
-                                    </div>
-                                    <Badge variant="outline" className="text-[9px] font-mono border-rose-200 text-rose-600 uppercase">Blacklist</Badge>
-                                </div>
-                            ))}
-                        </div>
-                        <p className="text-sm font-medium text-slate-500">
-                            How would you like to proceed?
-                        </p>
-                    </div>
-                    <DialogFooter className="p-8 pt-4 bg-slate-50/50 border-t flex flex-col sm:flex-row gap-3">
-                        <Button
-                            variant="ghost"
-                            className="flex-1 h-12 rounded-xl font-bold text-slate-500 hover:bg-slate-100"
-                            onClick={() => setShowBlacklistAlert(false)}
-                        >
-                            Cancel
-                        </Button>
-                        <div className="flex flex-col sm:flex-row gap-2 flex-[2]">
-                            <Button
-                                variant="secondary"
-                                className="flex-1 h-12 rounded-xl font-black text-slate-700 border-2 border-slate-200 hover:bg-slate-100"
-                                onClick={handleSkipBlacklisted}
-                            >
-                                Skip & Continue
-                            </Button>
-                            <Button
-                                className="flex-1 h-12 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-lg shadow-rose-100"
-                                onClick={() => {
-                                    setShowBlacklistAlert(false);
-                                    handleAdd(true);
-                                }}
-                            >
-                                Add Anyway
-                            </Button>
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog >
+            </Dialog>
         </>
     );
 }

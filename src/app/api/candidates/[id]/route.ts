@@ -208,6 +208,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         if (body.date_of_birth !== undefined) updateData.date_of_birth = body.date_of_birth || null;
         if (body.year_of_bachelor_education !== undefined) updateData.year_of_bachelor_education = body.year_of_bachelor_education || null;
         if (body.age !== undefined) updateData.age = body.age || null;
+        if (body.checked !== undefined) updateData.checked = body.checked || null;
 
         // Compensation & Benefits fields
         const compensationFields = [

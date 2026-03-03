@@ -47,6 +47,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { CandidateAvatar } from "@/components/candidate-avatar";
+import { CandidateLinkedinButton } from "@/components/candidate-linkedin-button";
 import { AsyncFilterMultiSelect } from "@/components/ui/async-filter-multi-select";
 import { SmartCandidateSearch } from "@/components/smart-candidate-search"; // [NEW] Smart Search
 import { searchCompanies, searchPositions } from "@/app/actions/candidate-filters";
@@ -66,6 +67,7 @@ interface Candidate {
     job_function?: string;
     photo?: string;
     linkedin?: string;
+    checked?: string;
     created_date: string;
     modify_date: string;
     experiences: Experience[];
@@ -914,11 +916,6 @@ function CandidateRichCard({
                             {candidate.candidate_status}
                         </Badge>
                     )}
-                    {candidate.linkedin && (
-                        <a href={candidate.linkedin} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-full bg-blue-600 text-white hover:scale-110 transition-transform shadow-sm" title="View on LinkedIn">
-                            <Linkedin className="h-3.5 w-3.5" />
-                        </a>
-                    )}
                 </div>
 
                 <CandidateAvatar
@@ -932,10 +929,13 @@ function CandidateRichCard({
                 <ProfileAgeIndicator created={candidate.created_date} modified={candidate.modify_date} />
 
                 <div className="flex-1 min-w-0 pt-0.5">
-                    <h3 className="text-xl font-black truncate text-slate-900 group-hover:text-primary transition-colors flex items-center gap-2 cursor-pointer leading-none tracking-tight" onClick={() => window.location.href = `/candidates/${candidate.candidate_id}`}>
-                        {candidate.name}
-                        <Badge variant="outline" className="ml-2 text-[10px] h-5 hover:bg-primary hover:text-white transition-colors">View Profile &gt;</Badge>
-                    </h3>
+                    <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-xl font-black truncate text-slate-900 group-hover:text-primary transition-colors leading-none tracking-tight cursor-pointer" onClick={() => window.location.href = `/candidates/${candidate.candidate_id}`}>
+                            {candidate.name}
+                        </h3>
+                        <CandidateLinkedinButton checked={candidate.checked} linkedin={candidate.linkedin} candidateId={candidate.candidate_id} />
+                        <Badge variant="outline" className="text-[10px] h-5 hover:bg-primary hover:text-white transition-colors cursor-pointer" onClick={() => window.location.href = `/candidates/${candidate.candidate_id}`}>View Profile &gt;</Badge>
+                    </div>
 
                     <div className="flex flex-wrap gap-y-1 gap-x-3 mt-3 text-sm font-medium text-muted-foreground items-center">
                         <span className="flex items-center gap-1">

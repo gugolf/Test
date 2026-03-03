@@ -16,6 +16,7 @@ import { ChevronDown, ChevronUp, ExternalLink, MapPin } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CandidateLinkedinButton } from "@/components/candidate-linkedin-button";
 
 // --- Types (Duplicated from page.tsx to avoid circular deps or complex refactor) ---
 export interface Experience {
@@ -42,6 +43,7 @@ export interface Candidate {
     job_function?: string;
     photo?: string;
     linkedin?: string;
+    checked?: string;
     created_date: string;
     modify_date: string;
     experiences: Experience[];
@@ -119,13 +121,16 @@ const CandidateRow = ({
                             </AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col">
-                            <Link href={`/candidates/${candidate.candidate_id}`} className="hover:underline font-semibold text-slate-800 flex items-center gap-1">
-                                {candidate.name}
-                                <span className="text-sm text-slate-600 dark:text-slate-300 font-mono font-bold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 shadow-sm">
-                                    {candidate.candidate_id}
-                                </span>
-                            </Link>
-                            <span className="text-[11px] text-slate-500">
+                            <div className="flex items-center gap-2">
+                                <Link href={`/candidates/${candidate.candidate_id}`} className="hover:underline font-semibold text-slate-800 flex items-center gap-1">
+                                    {candidate.name}
+                                    <span className="text-sm text-slate-600 dark:text-slate-300 font-mono font-bold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 shadow-sm ml-1">
+                                        {candidate.candidate_id}
+                                    </span>
+                                </Link>
+                                <CandidateLinkedinButton checked={candidate.checked} linkedin={candidate.linkedin} candidateId={candidate.candidate_id} className="h-6 w-6 [&_svg]:h-3 [&_svg]:w-3" />
+                            </div>
+                            <span className="text-[11px] text-slate-500 mt-1">
                                 {candidate.nationality} • {candidate.age} yrs • {candidate.gender}
                             </span>
                         </div>

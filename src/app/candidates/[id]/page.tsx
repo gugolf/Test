@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import {
     Mail, Phone, MapPin, Calendar, Download, Edit,
     Briefcase, GraduationCap, Globe,
-    FileText, CheckCircle2, AlertCircle, UploadCloud, ChevronLeft, Plus
+    FileText, CheckCircle2, AlertCircle, UploadCloud, ChevronLeft, Plus,
+    Linkedin, DollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ import { AddExperienceDialog, DeleteExperienceButton } from "@/components/experi
 import { JobStatusDetailDialog } from "@/components/job-status-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ResumeManager } from "@/components/resume-manager";
+import { CandidateLinkedinButton } from "@/components/candidate-linkedin-button";
 import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
 
 export default function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -118,7 +120,8 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                     </div>
 
                     <div className="flex flex-col gap-3 items-end">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
+                            <CandidateLinkedinButton checked={candidate.checked} linkedin={candidate.linkedin} candidateId={candidate.candidate_id} className="h-10 w-10 [&_svg]:h-5 [&_svg]:w-5" />
                             <ResumeManager
                                 candidateId={candidate.candidate_id}
                                 resumeUrl={candidate.resume_url}
@@ -364,6 +367,81 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                             )}
                         </CardContent>
                     </Card>
+
+                    {/* Compensation & Benefits */}
+                    <Card className="border shadow-sm bg-card overflow-hidden">
+                        <CardHeader className="flex flex-row items-center justify-between border-b bg-gradient-to-r from-slate-50 to-white px-6 py-4">
+                            <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                                <span className="p-2 rounded-lg bg-emerald-100 text-emerald-600"><DollarSign className="h-5 w-5" /></span> Compensation & Benefits
+                            </CardTitle>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.location.href = `/candidates/${candidate.candidate_id}/edit`}
+                                className="h-8 gap-2 text-muted-foreground hover:text-primary shadow-sm"
+                            >
+                                <Edit className="h-3.5 w-3.5" /> Edit
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="pt-6">
+                            {(candidate.gross_salary || candidate.other_income || candidate.bonus || candidate.car_allowance || candidate.medical_allowance || candidate.provident_fund || candidate.gasoline || candidate.phone_allowance || candidate.insurance || candidate.housing_expat || candidate.other_benefits) ? (
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Gross Salary (฿/mth)</p>
+                                        <p className="font-bold text-base text-emerald-700">{candidate.gross_salary || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Performance Bonus</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.bonus ? `${candidate.bonus} Months` : "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Other Income</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.other_income || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Car Allowance (฿/mth)</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.car_allowance || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Gasoline (฿/mth)</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.gasoline || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Phone Allowance (฿/mth)</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.phone_allowance || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Provident Fund (%)</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.provident_fund || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Medical (Annual/Mth)</p>
+                                        <p className="font-semibold text-foreground/80">{[candidate.medical_allowance, candidate.medical_mth_allowance].filter(Boolean).join(" / ") || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Insurance</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.insurance || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Housing / Expat</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.housing_expat || "-"}</p>
+                                    </div>
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Other Benefits</p>
+                                        <p className="font-semibold text-foreground/80">{candidate.other_benefits || "-"}</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-8">
+                                    <p className="text-sm text-muted-foreground italic mb-4">No compensation details available.</p>
+                                    <Button variant="outline" size="sm" onClick={() => window.location.href = `/candidates/${candidate.candidate_id}/edit`}>
+                                        <Plus className="h-4 w-4 mr-2" /> Add Details
+                                    </Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
 
                     {/* Job Requisition Applied */}
                     <Card className="border shadow-sm bg-card overflow-hidden">
