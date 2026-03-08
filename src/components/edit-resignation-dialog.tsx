@@ -113,20 +113,20 @@ export function EditResignationDialog({
                     <DialogTitle className="text-2xl font-black mb-1">Edit Resignation</DialogTitle>
                     <DialogDescription className="text-red-700/80 font-medium">
                         Update resignation details for <b>{initialData?.candidate_name}</b>.
-                        {formData.tracking_status && (
-                            <div className="mt-2">
-                                <Badge className={cn(
-                                    "text-[10px] uppercase font-black tracking-tighter",
-                                    formData.tracking_status === 'manual' ? "bg-emerald-500 text-white" :
-                                        formData.tracking_status === 'auto' ? "bg-amber-500 text-white animate-pulse" :
-                                            formData.tracking_status === 'ref_set' ? "bg-blue-500 text-white" :
-                                                "bg-slate-400 text-white"
-                                )}>
-                                    Status: {formData.tracking_status}
-                                </Badge>
-                            </div>
-                        )}
                     </DialogDescription>
+                    {formData.tracking_status && (
+                        <div className="mt-2">
+                            <Badge className={cn(
+                                "text-[10px] uppercase font-black tracking-tighter",
+                                formData.tracking_status === 'manual' ? "bg-emerald-500 text-white" :
+                                    formData.tracking_status === 'auto' ? "bg-amber-500 text-white animate-pulse" :
+                                        formData.tracking_status === 'ref_set' ? "bg-blue-500 text-white" :
+                                            "bg-slate-400 text-white"
+                            )}>
+                                Status: {formData.tracking_status}
+                            </Badge>
+                        </div>
+                    )}
                 </div>
 
                 <ScrollArea className="max-h-[60vh]">

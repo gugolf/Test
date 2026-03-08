@@ -146,3 +146,27 @@ export async function updateCandidateDOB(candidateId: string, dob: string | null
     revalidatePath('/requisitions/placements');
     return { success: true };
 }
+
+export async function getEmploymentCounts() {
+    const supabase = adminAuthClient;
+
+    const { count: activeCount, error: activeError } = await supabase
+        .from('employment_record')
+        .select('*', { count: 'exact', head: true })
+        .eq('hiring_status', 'Active');
+
+    const { count: resignedCount, error: resignedError } = await supabase
+        .from('employment_record')
+        .select('*', { count: 'exact', head: true })
+        .eq('hiring_status', 'Resigned');
+
+    if (activeError || resignedError) {
+        console.error('Error fetching employment counts:', activeError || resignedError);
+        return { active: 0, resigned: 0 };
+    }
+
+    return {
+        active: activeCount || 0,
+        resigned: resignedCount || 0
+    };
+}
