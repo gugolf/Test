@@ -7,7 +7,7 @@ export async function getEmploymentRecords(status: 'Active' | 'Resigned') {
     const supabase = adminAuthClient;
     const { data, error } = await supabase
         .from('employment_record')
-        .select('*')
+        .select('*, resignation_reason')
         .eq('hiring_status', status)
         .order('er_number', { ascending: false });
 

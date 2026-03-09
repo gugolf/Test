@@ -51,7 +51,7 @@ export function EditResignationDialog({
         if (open && initialData) {
             setFormData({
                 resign_date: initialData.resign_date || "",
-                resignation_reason: initialData.resignation_reason || "",
+                resignation_reason: initialData.resignation_reason || initialData.resignation_reason_test || "",
                 resign_note: initialData.resign_note || "",
                 position: initialData.position || "",
                 bu: initialData.bu || "",

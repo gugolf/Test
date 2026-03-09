@@ -10,7 +10,7 @@ import {
     TableHeader,
     TableRow
 } from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
     LogOut,
@@ -93,13 +93,14 @@ export default function ResignationsPage() {
             r.jr_id?.toLowerCase().includes(search.toLowerCase());
 
         const matchesBU = buFilter === "all" || r.bu === buFilter;
-        const matchesReason = reasonFilter === "all" || (r.resignation_reason || "Other") === reasonFilter;
+        const currentReason = r.resignation_reason || r.resignation_reason_test || "Other";
+        const matchesReason = reasonFilter === "all" || currentReason === reasonFilter;
 
         return matchesSearch && matchesBU && matchesReason;
     });
 
     const uniqueBUs = Array.from(new Set(records.map(r => r.bu).filter(Boolean))).sort();
-    const uniqueReasons = Array.from(new Set(records.map(r => r.resignation_reason || "Other"))).sort();
+    const uniqueReasons = Array.from(new Set(records.map(r => r.resignation_reason || r.resignation_reason_test || "Other"))).sort();
 
     return (
         <div className="mx-auto p-6 space-y-8 w-full max-w-[95%] animate-in fade-in duration-500">
@@ -164,117 +165,145 @@ export default function ResignationsPage() {
                 </div>
             </div>
 
-            {/* Stats Summary & Dashboard — 3-column row */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card className="md:col-span-4 border-none shadow-xl shadow-slate-200/50 bg-white rounded-[2.5rem] p-6">
-                    <div className="flex flex-col lg:flex-row gap-6 items-stretch">
-
-                        {/* Col 1: Total Resigned — horizontal banner */}
-                        <div className="lg:flex-[1] flex items-center gap-5 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl px-8 py-6 shadow-lg min-h-[100px]">
-                            <div className="p-3 bg-white/10 rounded-xl">
-                                <Users className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Resigned</p>
-                                <h2 className="text-5xl font-black text-white leading-none">{records.length}</h2>
-                            </div>
+            {/* Row 1: Key Metric (Matching Placements Style) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="border-none shadow-2xl bg-slate-900 text-white rounded-[2.5rem] overflow-hidden group">
+                    <CardContent className="p-8 flex items-center justify-between relative h-full min-h-[160px]">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700 pointer-events-none" />
+                        <div>
+                            <p className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">Total Resigned</p>
+                            <h3 className="text-5xl font-black tracking-tighter">{records.length}</h3>
                         </div>
+                        <Users className="w-16 h-16 text-white/10 -rotate-12 group-hover:rotate-0 transition-transform duration-500" />
+                    </CardContent>
+                </Card>
+                <div className="hidden md:block col-span-2 bg-slate-50/30 rounded-[2.5rem] border-2 border-dashed border-slate-100 flex items-center justify-center">
+                    <p className="text-slate-300 font-black uppercase tracking-[0.3em] text-[10px]">Statistical Overview & Resignation Trends</p>
+                </div>
+            </div>
 
-                        {/* Col 2: Resigned Reason vs Tenure table */}
-                        <div className="lg:flex-[2] space-y-3">
-                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                <History className="w-4 h-4 text-indigo-600" />
-                                Resigned Reason vs Tenure
-                            </h3>
-                            <div className="bg-slate-50/50 rounded-[1.5rem] border border-slate-100 overflow-hidden">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="hover:bg-transparent border-slate-100">
-                                            <TableHead className="py-2 px-4 font-black text-slate-600 text-[13px] tracking-widest uppercase">Resigned Reason</TableHead>
-                                            <TableHead className="py-2 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">{'<1Y'}</TableHead>
-                                            <TableHead className="py-2 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">1-2Y</TableHead>
-                                            <TableHead className="py-2 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">3-5Y</TableHead>
-                                            <TableHead className="py-2 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">6-9Y</TableHead>
-                                            <TableHead className="py-2 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">10Y+</TableHead>
-                                            <TableHead className="py-2 pr-4 font-black text-center text-indigo-600 text-[13px] tracking-widest uppercase">Total</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {getResignationBreakdown(records)
-                                            .slice()
-                                            .sort((a: any, b: any) => a.reason.localeCompare(b.reason))
-                                            .map((row: any, idx: number) => (
-                                                <TableRow key={idx} className="hover:bg-slate-50/50 border-slate-50">
-                                                    <TableCell className="py-2 px-4 font-semibold text-slate-700 text-[15px]">{row.reason}</TableCell>
-                                                    <TableCell className="py-2 text-center text-slate-500 font-medium text-[15px]">{row.lessThan1 || '—'}</TableCell>
-                                                    <TableCell className="py-2 text-center text-slate-500 font-medium text-[15px]">{row.oneToTwo || '—'}</TableCell>
-                                                    <TableCell className="py-2 text-center text-slate-500 font-medium text-[15px]">{row.threeToFive || '—'}</TableCell>
-                                                    <TableCell className="py-2 text-center text-slate-500 font-medium text-[15px]">{row.sixToNine || '—'}</TableCell>
-                                                    <TableCell className="py-2 text-center text-slate-500 font-medium text-[15px]">{row.tenPlus || '—'}</TableCell>
-                                                    <TableCell className="py-2 pr-4 text-center font-black text-indigo-600 text-[16px]">{row.total}</TableCell>
+            {/* Row 2: Detailed Analytics */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* 1. Tenure Breakdown Table */}
+                <Card className="lg:col-span-2 border-none shadow-xl bg-white rounded-[2.5rem] overflow-hidden border border-slate-100">
+                    <CardHeader className="pb-3 border-b border-slate-50 px-8 pt-8">
+                        <CardTitle className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+                            <History className="w-4 h-4 text-indigo-500" /> Resigned Reason vs Tenure
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                            <Table>
+                                <TableHeader className="bg-slate-50/50">
+                                    <TableRow className="hover:bg-transparent border-slate-100">
+                                        <TableHead className="py-4 px-8 font-black text-slate-600 text-[13px] tracking-widest uppercase">Resigned Reason</TableHead>
+                                        <TableHead className="py-4 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">{'<1Y'}</TableHead>
+                                        <TableHead className="py-4 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">1-2Y</TableHead>
+                                        <TableHead className="py-4 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">3-5Y</TableHead>
+                                        <TableHead className="py-4 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">6-9Y</TableHead>
+                                        <TableHead className="py-4 font-black text-center text-slate-600 text-[13px] tracking-widest uppercase">10Y+</TableHead>
+                                        <TableHead className="py-4 pr-8 font-black text-center text-indigo-600 text-[13px] tracking-widest uppercase">Total</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {getResignationBreakdown(records)
+                                        .slice()
+                                        .sort((a: any, b: any) => a.reason.localeCompare(b.reason))
+                                        .map((row: any, idx: number) => {
+                                            const isSelected = reasonFilter !== "all" && row.reason === reasonFilter;
+                                            return (
+                                                <TableRow
+                                                    key={idx}
+                                                    onClick={() => setReasonFilter(isSelected ? "all" : row.reason)}
+                                                    className={cn(
+                                                        "cursor-pointer transition-all border-slate-50",
+                                                        isSelected ? "bg-indigo-50/50 hover:bg-indigo-50" : "hover:bg-slate-50/80"
+                                                    )}
+                                                >
+                                                    <TableCell className="py-3 px-8">
+                                                        <span className={cn("text-[15px] font-bold", isSelected ? "text-indigo-600" : "text-slate-700")}>
+                                                            {row.reason}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="py-3 text-center text-slate-500 font-medium text-[15px]">{row.lessThan1 || '—'}</TableCell>
+                                                    <TableCell className="py-3 text-center text-slate-500 font-medium text-[15px]">{row.oneToTwo || '—'}</TableCell>
+                                                    <TableCell className="py-3 text-center text-slate-500 font-medium text-[15px]">{row.threeToFive || '—'}</TableCell>
+                                                    <TableCell className="py-3 text-center text-slate-500 font-medium text-[15px]">{row.sixToNine || '—'}</TableCell>
+                                                    <TableCell className="py-3 text-center text-slate-500 font-medium text-[15px]">{row.tenPlus || '—'}</TableCell>
+                                                    <TableCell className="py-3 pr-8 text-center">
+                                                        <Badge variant="secondary" className={cn(
+                                                            "font-black text-[13px] px-3 py-1",
+                                                            isSelected ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600"
+                                                        )}>
+                                                            {row.total}
+                                                        </Badge>
+                                                    </TableCell>
                                                 </TableRow>
-                                            ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
+                                            );
+                                        })}
+                                </TableBody>
+                            </Table>
                         </div>
+                    </CardContent>
+                </Card>
 
-                        {/* Col 3: Pie Chart — legend right, pie shifted right */}
-                        <div className="lg:flex-[2] space-y-3">
-                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                <PieChart className="w-4 h-4 text-indigo-600" />
-                                Resigned Reason Distribution
-                            </h3>
-                            <div className="h-[300px] w-full bg-slate-50/50 rounded-[1.5rem] border border-slate-100">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <RePieChart>
-                                        <Pie
-                                            data={(() => {
-                                                const breakdown = getResignationBreakdown(records)
-                                                    .slice()
-                                                    .sort((a: any, b: any) => a.reason.localeCompare(b.reason));
-                                                return breakdown.map(b => ({ name: b.reason, value: b.total }));
-                                            })()}
-                                            cx="42%"
-                                            cy="50%"
-                                            innerRadius={65}
-                                            outerRadius={100}
-                                            paddingAngle={3}
-                                            dataKey="value"
-                                            label={({ value }) => `${value}`}
-                                            labelLine={true}
-                                        >
-                                            {[
-                                                "#6366f1",
-                                                "#10b981",
-                                                "#f59e0b",
-                                                "#ef4444",
-                                                "#8b5cf6",
-                                                "#3b82f6"
-                                            ].map((color, idx) => (
-                                                <Cell key={`cell-${idx}`} fill={color} />
-                                            ))}
-                                        </Pie>
-                                        <ReTooltip
-                                            formatter={(value: any, name: any) => [value, name]}
-                                            contentStyle={{ borderRadius: '0.75rem', border: 'none', boxShadow: '0 10px 20px -5px rgb(0 0 0 / 0.1)', fontWeight: 'bold', fontSize: '12px' }}
-                                        />
-                                        <Legend
-                                            layout="vertical"
-                                            align="right"
-                                            verticalAlign="middle"
-                                            formatter={(value: any, entry: any) => (
-                                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#475569' }}>
-                                                    {value} <span style={{ color: entry.color, fontWeight: 900 }}>({entry.payload?.value})</span>
-                                                </span>
-                                            )}
-                                        />
-                                    </RePieChart>
-                                </ResponsiveContainer>
-                            </div>
+                {/* 2. Donut Chart */}
+                <Card className="lg:col-span-1 border-none shadow-xl bg-white rounded-[2.5rem] overflow-hidden border border-slate-100">
+                    <CardHeader className="pb-3 border-b border-slate-50 px-8 pt-8">
+                        <CardTitle className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+                            <PieChart className="w-4 h-4 text-indigo-500" /> Reason Distribution
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 px-8 pb-8">
+                        <div className="h-[280px] w-full mt-2">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <RePieChart>
+                                    <Pie
+                                        data={(() => {
+                                            const breakdown = getResignationBreakdown(records)
+                                                .slice()
+                                                .sort((a: any, b: any) => a.reason.localeCompare(b.reason));
+                                            return breakdown.map(b => ({ name: b.reason, value: b.total }));
+                                        })()}
+                                        cx="50%"
+                                        cy="45%"
+                                        innerRadius={60}
+                                        outerRadius={85}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                        label={({ value }) => `${value}`}
+                                        labelLine={false}
+                                    >
+                                        {[
+                                            "#6366f1",
+                                            "#10b981",
+                                            "#f59e0b",
+                                            "#ef4444",
+                                            "#8b5cf6",
+                                            "#3b82f6"
+                                        ].map((color, idx) => (
+                                            <Cell key={`cell-${idx}`} fill={color} />
+                                        ))}
+                                    </Pie>
+                                    <ReTooltip
+                                        formatter={(value: any, name: any) => [value, name]}
+                                        contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', fontWeight: 'bold', fontSize: '11px' }}
+                                    />
+                                    <Legend
+                                        layout="horizontal"
+                                        align="center"
+                                        verticalAlign="bottom"
+                                        wrapperStyle={{ paddingTop: '20px' }}
+                                        formatter={(value: any, entry: any) => (
+                                            <span style={{ fontSize: '9px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                {value}
+                                            </span>
+                                        )}
+                                    />
+                                </RePieChart>
+                            </ResponsiveContainer>
                         </div>
-
-                    </div>
+                    </CardContent>
                 </Card>
             </div>
 
@@ -341,7 +370,7 @@ export default function ResignationsPage() {
                                         <TableCell>
                                             <div className="max-w-[120px]">
                                                 <Badge variant="outline" className="border-slate-200 text-slate-600 font-bold text-[10px] uppercase py-1 px-2">
-                                                    {r.resignation_reason || 'Unspecified'}
+                                                    {r.resignation_reason || r.resignation_reason_test || 'Unspecified'}
                                                 </Badge>
                                             </div>
                                         </TableCell>
@@ -442,9 +471,9 @@ function getAvgTenure(records: any[]) {
 }
 
 function getResignationBreakdown(records: any[]) {
-    const reasons = Array.from(new Set(records.map(r => r.resignation_reason || "Other")));
+    const reasons = Array.from(new Set(records.map(r => r.resignation_reason || r.resignation_reason_test || "Other")));
     return reasons.map(reason => {
-        const filtered = records.filter(r => (r.resignation_reason || "Other") === reason);
+        const filtered = records.filter(r => (r.resignation_reason || r.resignation_reason_test || "Other") === reason);
         const getTenure = (r: any) => {
             if (!r.hire_date || !r.resign_date) return 0;
             return (new Date(r.resign_date).getTime() - new Date(r.hire_date).getTime()) / (1000 * 60 * 60 * 24 * 365.25);
