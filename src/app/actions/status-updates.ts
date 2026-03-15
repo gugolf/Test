@@ -100,6 +100,7 @@ export async function batchUpdateCandidateStatus(
             jr_candidate_id: id,
             status: newStatus,
             updated_By: resolvedUpdatedBy,
+            updated_by: resolvedUpdatedBy,
             timestamp: timestampStr,
             note: note || "Batch update"
         }));
@@ -162,7 +163,7 @@ export async function removeFromJR(jrCandidateIds: string[]) {
     }
 }
 
-export async function copyCandidatesToJR(jrCandidateIds: string[], targetJrId: string) {
+export async function copyCandidatesToJR(jrCandidateIds: string[], targetJrId: string, updatedBy?: string) {
     const supabase = adminAuthClient;
     try {
         // 1. Get candidate_ids and other data from original entries
@@ -226,7 +227,8 @@ export async function copyCandidatesToJR(jrCandidateIds: string[], targetJrId: s
             log_id: nextLogId + index,
             jr_candidate_id: d.jr_candidate_id,
             status: "Pool Candidate", // Default for copy
-            updated_By: "Copy Action",
+            updated_By: updatedBy || "Copy Action",
+            updated_by: updatedBy || "Copy Action",
             timestamp: timestampStr,
             note: "Copied from another JR"
         }));

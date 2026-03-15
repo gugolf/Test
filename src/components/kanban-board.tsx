@@ -25,6 +25,7 @@ interface KanbanBoardProps {
     jobTitle: string;
     bu: string;
     subBu: string;
+    updatedBy?: string;
 }
 
 type StageType = {
@@ -34,7 +35,7 @@ type StageType = {
 
 import { ConfirmPlacementDialog } from "@/components/confirm-placement-dialog";
 
-export function KanbanBoard({ jrId, jobTitle, bu, subBu }: KanbanBoardProps) {
+export function KanbanBoard({ jrId, jobTitle, bu, subBu, updatedBy }: KanbanBoardProps) {
     const [candidates, setCandidates] = useState<JRCandidate[]>([]);
     const [stages, setStages] = useState<StageType[]>([]);
     const [loading, setLoading] = useState(true);
@@ -93,7 +94,7 @@ export function KanbanBoard({ jrId, jobTitle, bu, subBu }: KanbanBoardProps) {
             setUpdatingId(candidateId);
 
             // Persistent Update
-            const { success, error } = await updateCandidateStatus(candidateId, newStage);
+            const { success, error } = await updateCandidateStatus(candidateId, newStage, updatedBy);
 
             if (success) {
                 // Refresh data to ensure logs and everything are in sync
@@ -119,7 +120,7 @@ export function KanbanBoard({ jrId, jobTitle, bu, subBu }: KanbanBoardProps) {
         }
 
         setUpdatingId(candidateId);
-        const { success, error } = await updateCandidateStatus(candidateId, newStatus);
+        const { success, error } = await updateCandidateStatus(candidateId, newStatus, updatedBy);
         if (success) {
             const updated = await getJRCandidates(jrId);
             setCandidates(updated);

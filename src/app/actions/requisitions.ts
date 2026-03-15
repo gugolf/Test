@@ -147,7 +147,8 @@ export async function updateJobRequisition(jrId: string, data: any): Promise<{ s
             original_jr_id: data.original_jr_id || null,
             job_description: data.job_description,
             feedback_file: data.feedback_file,
-            // request_date: data.request_date, // Try excluding potentially strict fields
+            create_by: data.create_by
+            // request_date: data.request_date,
         };
 
         const { data: updated, error: updateError } = await (supabase
@@ -233,7 +234,7 @@ export async function createJobRequisition(data: any): Promise<JobRequisition | 
             request_date: data.request_date, // User selected date
             job_description: data.job_description,
             feedback_file: data.feedback_file,
-            create_by: await getCurrentUserRealName(),
+            create_by: data.create_by || await getCurrentUserRealName(),
 
             // Defaults
             is_active: 'Active',
@@ -435,7 +436,7 @@ export async function copyJobRequisition(sourceJrId: string, newJrData: Partial<
             sub_bu: newJrData.department,
             jr_type: 'New',
             request_date: new Date().toISOString().split('T')[0],
-            create_by: "System (Copy)",
+            create_by: newJrData.created_by || "System (Copy)",
             is_active: 'Active',
             created_at: new Date().toISOString()
         };
@@ -495,7 +496,8 @@ export async function copyJobRequisition(sourceJrId: string, newJrData: Partial<
                     log_id: nextLogId,
                     jr_candidate_id: nextJrcId,
                     status: 'Pool Candidate',
-                    updated_By: 'System (Copy)',
+                    updated_By: newJrData.created_by || 'System (Copy)',
+                    updated_by: newJrData.created_by || 'System (Copy)',
                     timestamp: timestampStr
                 });
 

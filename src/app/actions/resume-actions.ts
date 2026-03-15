@@ -9,7 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export interface UploadRecord {
     file_name: string;
     resume_url: string;
-    uploader_email: string;
+    uploader_email: string; // Will store real_name
     status?: string;
 }
 
@@ -25,7 +25,12 @@ export async function createUploadRecord(record: UploadRecord) {
 
         if (existing) {
             console.log(`Duplicate file upload attempt: ${record.file_name}`);
-            return { success: false, error: 'Duplicate file: This resume has already been uploaded.' };
+            return { 
+                success: false, 
+                isDuplicate: true,
+                existingRecord: existing,
+                error: 'Duplicate file: This resume has already been uploaded.' 
+            };
         }
 
         // 2. Insert new record
@@ -35,7 +40,7 @@ export async function createUploadRecord(record: UploadRecord) {
                 {
                     file_name: record.file_name,
                     resume_url: record.resume_url,
-                    uploader_email: record.uploader_email,
+                    uploader_email: record.uploader_email, // This is the real_name
                     status: 'pending' // Default processing status
                 }
             ])
@@ -138,3 +143,72 @@ export async function updateUploadCandidateStatus(
         return { success: false, error: error.message };
     }
 }
+
+export async function handleDuplicateResume(
+    choice: 'update' | 'attach' | 'no-action',
+    existingRecord: { id: string, candidate_id?: string, file_name: string },
+    newResumeUrl: string,
+    uploaderEmail: string
+) {
+    try {
+        if (choice === 'no-action') return { success: true, message: 'Skipped' };
+
+        if (choice === 'attach') {
+            if (!existingRecord.candidate_id) {
+                return { success: false, error: 'Cannot attach: Existing record is not linked to a candidate.' };
+            }
+
+            // Update Candidate Profile
+            const { error: profileError } = await (supabase
+                .from('Candidate Profile' as any) as any)
+                .update({ 
+                    resume_url: newResumeUrl,
+                    modify_date: new Date().toISOString()
+                })
+                .eq('candidate_id', existingRecord.candidate_id);
+
+            if (profileError) throw profileError;
+
+            // Update Upload Log
+            await supabase
+                .from('resume_uploads')
+                .update({ 
+                    resume_url: newResumeUrl,
+                    status: 'Completed',
+                    note: `Manual Attach by ${uploaderEmail}`
+                })
+                .eq('id', existingRecord.id);
+
+            return { success: true, message: 'Resume attached successfully' };
+        }
+
+        if (choice === 'update') {
+            // Trigger n8n logic
+            // Set status to pending to let n8n or trigger pick it up
+            const { error: uploadError } = await supabase
+                .from('resume_uploads')
+                .update({ 
+                    resume_url: newResumeUrl,
+                    status: 'pending',
+                    note: `Re-triggered for update by ${uploaderEmail}`
+                })
+                .eq('id', existingRecord.id);
+
+            if (uploadError) throw uploadError;
+
+            // If we have a candidate_id, we can specifically trigger a refresh.
+            if (existingRecord.candidate_id) {
+                const { triggerCandidateRefresh } = await import("./n8n-actions");
+                await triggerCandidateRefresh([{ id: existingRecord.candidate_id }], uploaderEmail);
+            }
+
+            return { success: true, message: 'Update triggered successfully' };
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("Handle Duplicate Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+

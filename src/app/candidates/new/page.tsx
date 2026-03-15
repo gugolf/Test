@@ -23,6 +23,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import { getUserProfiles, type UserProfile } from "@/app/actions/user-actions";
 import { toast } from "sonner";
 import { getEffectiveAge, extractYear, calculateBachelorYearFromAge } from "@/lib/date-utils";
 
@@ -42,6 +43,8 @@ function CandidateForm() {
     // Master Data
     const [nationalities, setNationalities] = useState<string[]>([]);
     const [openNat, setOpenNat] = useState(false);
+    const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
+    const [loadingUsers, setLoadingUsers] = useState(false);
 
     // Form State
     const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -73,7 +76,8 @@ function CandidateForm() {
         medical_b_mth: "",
         insurance: "",
         housing_for_expat_b_mth: "",
-        others_benefit: ""
+        others_benefit: "",
+        createdBy: ""
     });
 
     useEffect(() => {
@@ -82,6 +86,27 @@ function CandidateForm() {
             if (data) setNationalities((data as any).map((n: any) => n.nationality));
         };
         fetchNat();
+
+        const fetchUsers = async () => {
+            setLoadingUsers(true);
+            const res = await getUserProfiles();
+            if (res.success && res.data) {
+                setUserProfiles(res.data);
+                
+                // Set default Created By to currently logged in user's real name
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const currentUserProfile = res.data.find(u => u.email.toLowerCase() === user.email?.toLowerCase());
+                    if (currentUserProfile) {
+                        setFormData(prev => ({ ...prev, createdBy: currentUserProfile.real_name }));
+                    } else {
+                        setFormData(prev => ({ ...prev, createdBy: user.email || "" }));
+                    }
+                }
+            }
+            setLoadingUsers(false);
+        };
+        fetchUsers();
     }, []);
 
     // Effect for pre-filling data from query params (e.g., from OrgChart)
@@ -232,7 +257,24 @@ function CandidateForm() {
 
                         {/* Section 1: Identity */}
                         <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Metric Identity</h3>
+                            <div className="flex justify-between items-end">
+                                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Metric Identity</h3>
+                                
+                                <div className="space-y-1.5 w-64">
+                                    <Label htmlFor="createdBy" className="text-xs">Created By</Label>
+                                    <select
+                                        id="createdBy"
+                                        className="flex h-9 w-full rounded-md border border-input bg-secondary/10 px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        value={formData.createdBy}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, createdBy: e.target.value }))}
+                                    >
+                                        <option value="">Select User...</option>
+                                        {userProfiles.map((u, idx) => (
+                                            <option key={`${u.email}-${idx}`} value={u.real_name}>{u.real_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">

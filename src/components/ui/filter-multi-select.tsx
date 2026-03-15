@@ -67,17 +67,17 @@ export function FilterMultiSelect({
                     <ChevronDown className="ml-2 h-3 w-3 opacity-50 shrink-0" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="p-0 w-[240px]" align="start">
+            <PopoverContent className="p-0 w-auto min-w-[240px] max-w-[600px]" align="start">
                 <Command>
                     <CommandInput placeholder={`Search ${label}...`} className="h-9" />
                     <CommandList>
                         <CommandEmpty>No results found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-y-auto">
-                            {options.map((option) => {
+                            {options.map((option, idx) => {
                                 const isSelected = selectedArray.includes(option);
                                 return (
                                     <CommandItem
-                                        key={option}
+                                        key={`${option}-${idx}`}
                                         value={option}
                                         onSelect={() => onChange(option)}
                                     >
@@ -91,7 +91,7 @@ export function FilterMultiSelect({
                                         >
                                             <Check className={cn("h-4 w-4")} />
                                         </div>
-                                        <span className="truncate">{option}</span>
+                                        <span className="whitespace-nowrap pr-4">{option}</span>
                                     </CommandItem>
                                 );
                             })}

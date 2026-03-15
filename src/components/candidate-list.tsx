@@ -62,11 +62,12 @@ interface CandidateListProps {
     jobTitle: string;
     bu: string;
     subBu: string;
+    updatedBy?: string;
 }
 
 import { ConfirmPlacementDialog } from "@/components/confirm-placement-dialog";
 
-export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps) {
+export function CandidateList({ jrId, jobTitle, bu, subBu, updatedBy }: CandidateListProps) {
     const [candidates, setCandidates] = useState<JRCandidate[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
@@ -148,7 +149,7 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
 
         if (isBatchUpdate) {
             setLoading(true);
-            const { success, error } = await batchUpdateCandidateStatus(selectedIds, pendingStatus, undefined, note || null);
+            const { success, error } = await batchUpdateCandidateStatus(selectedIds, pendingStatus, updatedBy, note || null);
             if (success) {
                 const updated = await getJRCandidates(jrId);
                 setCandidates(updated);
@@ -160,7 +161,7 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
             setLoading(false);
         } else if (pendingCandidateId) {
             setStatusUpdating(pendingCandidateId);
-            const { success, error } = await updateCandidateStatus(pendingCandidateId, pendingStatus, undefined, note || null);
+            const { success, error } = await updateCandidateStatus(pendingCandidateId, pendingStatus, updatedBy, note || null);
             if (success) {
                 const updated = await getJRCandidates(jrId);
                 setCandidates(updated);
@@ -223,7 +224,7 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
 
     const handleCopy = async (ids: string[], targetJrId: string) => {
         setLoading(true);
-        const { success, error } = await copyCandidatesToJR(ids, targetJrId);
+        const { success, error } = await copyCandidatesToJR(ids, targetJrId, updatedBy);
         if (success) {
             alert("Candidates copied successfully!");
         } else {
@@ -313,8 +314,8 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                 <ScrollArea className="max-h-[240px] pr-1">
                     <div className="flex flex-col gap-0.5">
                         {options.length === 0 && <div className="text-xs text-slate-400 text-center py-3">No options</div>}
-                        {options.map(opt => (
-                            <label key={opt} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs font-medium text-slate-700">
+                        {options.map((opt, idx) => (
+                            <label key={`${opt}-${idx}`} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs font-medium text-slate-700">
                                 <Checkbox
                                     checked={selected.includes(opt)}
                                     onCheckedChange={() => toggleMulti(selected, opt, setSelected)}
@@ -387,9 +388,9 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start" className="w-[180px] rounded-xl shadow-2xl border-slate-100">
                                     <DropdownMenuLabel className="text-[9px] font-black uppercase text-slate-400 tracking-widest px-3 py-2">Batch Status Update</DropdownMenuLabel>
-                                    {statusOptions.map(opt => (
+                                    {statusOptions.map((opt, idx) => (
                                         <DropdownMenuItem
-                                            key={opt.status}
+                                            key={`${opt.status}-${idx}`}
                                             className="py-2 font-bold text-xs cursor-pointer rounded-lg mx-1"
                                             onClick={() => handleBatchStatusChange(opt.status)}
                                         >
@@ -420,9 +421,9 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                                         <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">Copy to other JR</span>
                                         <ScrollArea className="h-[200px] pr-2">
                                             <div className="flex flex-col gap-1">
-                                                {allJRs.map(j => (
+                                                {allJRs.map((j, idx) => (
                                                     <button
-                                                        key={j.id}
+                                                        key={`${j.id}-${idx}`}
                                                         className="text-left py-2 px-3 rounded-lg hover:bg-slate-50 text-[11px] font-bold border border-transparent hover:border-slate-100 transition-all group"
                                                         onClick={() => handleCopy(selectedIds, j.id)}
                                                     >
@@ -656,8 +657,8 @@ export function CandidateList({ jrId, jobTitle, bu, subBu }: CandidateListProps)
                                                     onChange={(e) => handleStatusChange(c.id, e.target.value)}
                                                 >
                                                     {statusOptions.length > 0 ? (
-                                                        statusOptions.map(opt => (
-                                                            <option key={opt.status} value={opt.status} className="bg-white text-slate-800 font-bold py-1">
+                                                        statusOptions.map((opt, idx) => (
+                                                            <option key={`${opt.status}-${idx}`} value={opt.status} className="bg-white text-slate-800 font-bold py-1">
                                                                 {opt.status}
                                                             </option>
                                                         ))

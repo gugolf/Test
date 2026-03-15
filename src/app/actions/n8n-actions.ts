@@ -7,15 +7,20 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-export async function triggerReport(jrId: string, requester: string) {
+export async function triggerReport(jrId: string, requester?: string) {
     try {
+        // Fetch current user from session if possible
+        const supabaseServer = await createServerClient();
+        const { data: { user } } = await supabaseServer.auth.getUser();
+        const finalRequester = user?.email || requester || 'System';
+
         // 1. Log the attempt in jr_reports as 'pending'
         const { data: log, error: logError } = await supabase
             .from('jr_reports')
             .insert([
                 {
                     jr_id: jrId,
-                    requester: requester,
+                    requester: finalRequester,
                     status: 'pending'
                 }
             ])
@@ -37,7 +42,7 @@ export async function triggerReport(jrId: string, requester: string) {
         // Add params based on method, or just query params for simplicity + flexibility
         if (config.method === 'GET') {
             url.searchParams.append("jr_id", jrId);
-            url.searchParams.append("requester", requester);
+            url.searchParams.append("requester", finalRequester);
             url.searchParams.append("log_id", log.id.toString());
         }
 
@@ -54,7 +59,7 @@ export async function triggerReport(jrId: string, requester: string) {
             fetchOptions.headers = { 'Content-Type': 'application/json' };
             fetchOptions.body = JSON.stringify({
                 jr_id: jrId,
-                requester: requester,
+                requester: finalRequester,
                 log_id: log.id
             });
         }
@@ -110,10 +115,16 @@ export async function getAllReports() {
 }
 
 // --- New: Candidate Data Refresh ---
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
-export async function triggerCandidateRefresh(candidates: { id: string, name?: string, linkedin?: string }[], requester: string) {
+export async function triggerCandidateRefresh(candidates: { id: string, name?: string, linkedin?: string }[], requester?: string) {
     try {
-        // 1. Fetch Config
+        // 1. Fetch current user from session if possible
+        const supabaseServer = await createServerClient();
+        const { data: { user } } = await supabaseServer.auth.getUser();
+        const finalRequester = user?.email || requester || 'System';
+
+        // 2. Fetch Config
         const config = await getN8nUrl('Candidate Refresh');
         if (!config) {
             return { success: false, error: "n8n Configuration 'Candidate Refresh' not found" };
@@ -122,10 +133,10 @@ export async function triggerCandidateRefresh(candidates: { id: string, name?: s
         const url = new URL(config.url);
         const requestDate = new Date().toISOString();
 
-        // 2. Prepare Payload
+        // 3. Prepare Payload
         const payload = {
             batch_id: crypto.randomUUID(), // Generate a unique ID for this batch
-            requester: requester,
+            requester: finalRequester,
             candidate_count: candidates.length,
             candidates: candidates.map(c => ({
                 id: c.id,
@@ -147,7 +158,7 @@ export async function triggerCandidateRefresh(candidates: { id: string, name?: s
             fetchOptions.body = JSON.stringify(payload);
         } else {
             // For GET, we'll just send the IDs to avoid extremely long URLs
-            url.searchParams.append("requester", requester);
+            url.searchParams.append("requester", finalRequester);
             url.searchParams.append("request_date", requestDate);
             url.searchParams.append("candidate_ids", candidates.map(c => c.id).join(','));
         }

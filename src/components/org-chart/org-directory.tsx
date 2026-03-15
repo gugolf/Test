@@ -3,8 +3,9 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Input } from '@/components/ui/input'
+import { Search, Globe } from 'lucide-react'
 
 type Upload = {
     upload_id: string
@@ -19,36 +20,47 @@ type OrgDirectoryProps = {
 
 export function OrgDirectory({ uploads, currentId }: OrgDirectoryProps) {
     const router = useRouter()
+    const [searchTerm, setSearchTerm] = useState('')
 
     // Group and stabilize uploads (Pre-sorted)
-    const { grouped, initialLetter } = useMemo(() => {
-        const sortedUploads = [...uploads].sort((a, b) =>
-            a.company_name < b.company_name ? -1 : a.company_name > b.company_name ? 1 : 0
-        )
+    const grouped = useMemo(() => {
+        const sortedUploads = [...uploads].sort((a, b) => {
+            const nameA = a.company_name.toLowerCase();
+            const nameB = b.company_name.toLowerCase();
+            if (nameA < nameB) return -1;
+            if (nameA > nameB) return 1;
+            return 0;
+        })
 
         const groups: Record<string, Upload[]> = {}
         sortedUploads.forEach(u => {
-            const firstLetter = u.company_name.charAt(0).toUpperCase()
-            if (!groups[firstLetter]) groups[firstLetter] = []
-            groups[firstLetter].push(u)
+            const firstChar = u.company_name.charAt(0).toUpperCase()
+            const key = /^[A-Z]$/.test(firstChar) ? firstChar : '#'
+            if (!groups[key]) groups[key] = []
+            groups[key].push(u)
         })
+        return groups
+    }, [uploads])
 
-        const available = Object.keys(groups).sort()
-        const selectedCompany = uploads.find(u => u.upload_id === currentId)
-        const letter = selectedCompany
-            ? selectedCompany.company_name.charAt(0).toUpperCase()
-            : available[0] || 'A'
+    const filteredGrouped = useMemo(() => {
+        if (!searchTerm.trim()) return grouped
 
-        return { grouped: groups, initialLetter: letter }
-    }, [uploads, currentId])
+        const filtered: Record<string, Upload[]> = {}
+        Object.entries(grouped).forEach(([letter, items]) => {
+            const matched = items.filter(u =>
+                u.company_name.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            if (matched.length > 0) filtered[letter] = matched
+        })
+        return filtered
+    }, [grouped, searchTerm])
 
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
-    const [selectedLetter, setSelectedLetter] = useState(initialLetter)
-
-    // Sync selectedLetter if initialLetter changes (e.g. navigation)
-    useEffect(() => {
-        setSelectedLetter(initialLetter)
-    }, [initialLetter])
+    // Layout configuration (4 rows vertical)
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('')
+    const columns = []
+    for (let i = 0; i < alphabet.length; i += 4) {
+        columns.push(alphabet.slice(i, i + 4))
+    }
 
     const handleCompanyClick = (uploadId: string) => {
         router.push(`/org-chart?id=${uploadId}`)
@@ -57,67 +69,75 @@ export function OrgDirectory({ uploads, currentId }: OrgDirectoryProps) {
     if (uploads.length === 0) return null
 
     return (
-        <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm overflow-hidden flex flex-col shrink-0">
-            {/* Alphabet Row (Top) */}
-            <div className="flex flex-wrap gap-0.5 p-1.5 border-b border-slate-100 dark:border-slate-900 justify-center bg-slate-50/30 dark:bg-slate-900/10">
-                {alphabet.map(letter => {
-                    const hasCompanies = !!grouped[letter]
-                    const isSelected = selectedLetter === letter
-
-                    return (
-                        <button
-                            key={letter}
-                            onClick={() => hasCompanies && setSelectedLetter(letter)}
-                            disabled={!hasCompanies}
-                            className={cn(
-                                "w-6 h-6 flex items-center justify-center rounded text-[9px] font-bold transition-all",
-                                isSelected
-                                    ? "bg-indigo-600 text-white shadow-sm"
-                                    : hasCompanies
-                                        ? "text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
-                                        : "text-slate-200 dark:text-slate-800 cursor-not-allowed"
-                            )}
-                        >
-                            {letter}
-                        </button>
-                    )
-                })}
-            </div>
-
-            {/* Companies Row (Bottom) */}
-            <div className="bg-slate-50/50 dark:bg-slate-900/50">
-                <ScrollArea className="w-full">
-                    <div className="flex p-1.5 gap-1.5 items-center min-h-[38px]">
-                        <div className="shrink-0 px-2 border-r border-slate-200 dark:border-slate-800 mr-1">
-                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                                {selectedLetter}
-                            </span>
-                        </div>
-                        {grouped[selectedLetter]?.map((upload) => {
-                            const isActive = upload.upload_id === currentId
-                            return (
-                                <button
-                                    key={upload.upload_id}
-                                    onClick={() => handleCompanyClick(upload.upload_id)}
-                                    className={cn(
-                                        "px-3 py-1 rounded text-[11px] transition-all whitespace-nowrap border shrink-0",
-                                        isActive
-                                            ? "bg-indigo-600 text-white border-indigo-600 font-medium shadow-sm"
-                                            : "bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
-                                    )}
-                                >
-                                    {upload.company_name}
-                                </button>
-                            )
-                        })}
-                        {(!grouped[selectedLetter] || grouped[selectedLetter].length === 0) && (
-                            <div className="px-3 text-slate-400 text-[10px] italic">
-                                No companies for "{selectedLetter}"
-                            </div>
-                        )}
+        <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden flex flex-col shrink-0">
+            {/* Header / Search */}
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/10 dark:bg-slate-900/10 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className="bg-indigo-600 p-1.5 rounded-lg text-white">
+                        <Globe size={16} />
                     </div>
-                </ScrollArea>
+                    <div>
+                        <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 italic">Organization Directory</h2>
+                        <p className="text-[10px] text-slate-500 font-medium">Browse and search structural data</p>
+                    </div>
+                </div>
+                <div className="relative w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                        placeholder="Search company..."
+                        className="h-9 pl-9 text-xs bg-white dark:bg-slate-950 shadow-sm border-slate-200 dark:border-slate-800 focus:ring-indigo-500 rounded-lg"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
             </div>
+
+            {/* Vertical Flow Directory Grid */}
+            <ScrollArea className="h-48">
+                <div className="p-4 grid grid-rows-4 grid-flow-col gap-x-8 gap-y-4 auto-cols-max overflow-x-auto">
+                    {alphabet.map(letter => {
+                        const items = filteredGrouped[letter]
+                        const hasItems = items && items.length > 0
+
+                        // If searching, hide letters that don't match
+                        if (searchTerm && !hasItems) return null
+
+                        return (
+                            <div key={letter} className="flex flex-col gap-1.5 min-w-[120px]">
+                                <div className={cn(
+                                    "text-xs font-black px-2 py-0.5 rounded border-l-4 w-fit mb-1",
+                                    hasItems
+                                        ? "text-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/20 border-indigo-600"
+                                        : "text-slate-300 dark:text-slate-700 bg-slate-50/30 dark:bg-slate-900/10 border-slate-200 dark:border-slate-800"
+                                )}>
+                                    {letter === '#' ? 'Others' : letter}
+                                </div>
+                                <div className="flex flex-col gap-0.5">
+                                    {items?.map(u => (
+                                        <button
+                                            key={u.upload_id}
+                                            onClick={() => handleCompanyClick(u.upload_id)}
+                                            className={cn(
+                                                "text-[11px] px-2 py-1 rounded-md text-left transition-all truncate hover:bg-white dark:hover:bg-slate-900 hover:shadow-sm border border-transparent",
+                                                u.upload_id === currentId
+                                                    ? "text-indigo-600 font-bold bg-indigo-50/30 dark:bg-indigo-900/20 border-indigo-200 shadow-sm"
+                                                    : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-slate-100"
+                                            )}
+                                        >
+                                            {u.company_name}
+                                        </button>
+                                    ))}
+                                    {!hasItems && !searchTerm && (
+                                        <div className="text-[11px] px-2 text-slate-300 dark:text-slate-800 italic">
+                                            -
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            </ScrollArea>
         </div>
     )
 }

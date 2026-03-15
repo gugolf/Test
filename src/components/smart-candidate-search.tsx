@@ -137,8 +137,8 @@ export function SmartCandidateSearch({
 
                                     {companySuggestions.length > 0 && (
                                         <CommandGroup heading="Company">
-                                            {companySuggestions.map((company) => (
-                                                <CommandItem key={company} onSelect={() => handleSelect(company, 'company')}>
+                                            {companySuggestions.map((company, idx) => (
+                                                <CommandItem key={`${company}-${idx}`} onSelect={() => handleSelect(company, 'company')}>
                                                     <Building className="mr-2 h-4 w-4 text-indigo-500" />
                                                     <span>{company}</span>
                                                 </CommandItem>
@@ -148,8 +148,8 @@ export function SmartCandidateSearch({
 
                                     {positionSuggestions.length > 0 && (
                                         <CommandGroup heading="Position">
-                                            {positionSuggestions.map((position) => (
-                                                <CommandItem key={position} onSelect={() => handleSelect(position, 'position')}>
+                                            {positionSuggestions.map((position, idx) => (
+                                                <CommandItem key={`${position}-${idx}`} onSelect={() => handleSelect(position, 'position')}>
                                                     <Briefcase className="mr-2 h-4 w-4 text-pink-500" />
                                                     <span>{position}</span>
                                                 </CommandItem>

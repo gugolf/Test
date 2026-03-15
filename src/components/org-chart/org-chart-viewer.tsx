@@ -2,20 +2,24 @@
 
 import React, { useState, useEffect } from 'react'
 import Tree from 'react-d3-tree'
-import { OrgNode } from '@/app/actions/org-chart-actions'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { OrgNode, bulkCreateOrgProfiles, createSingleOrgProfile } from '@/app/actions/org-chart-actions'
 import { Badge } from '@/components/ui/badge'
-import { UserCheck, UserPlus, Focus, ZoomIn, ZoomOut, Plus } from 'lucide-react'
+import { UserCheck, UserPlus, Focus, ZoomIn, ZoomOut, Plus, ExternalLink, Sparkles, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { cn } from "@/lib/utils"
+import { CandidateAvatar } from '@/components/candidate-avatar'
+import { CandidateLinkedinButton } from '@/components/candidate-linkedin-button'
+import { getCheckedStatus } from '@/lib/candidate-utils'
+import { toast } from 'sonner'
+import { useSearchParams } from 'next/navigation'
 
 type OrgChartViewerProps = {
     initialData: OrgNode | null
 }
 
 // Custom Node Component
-const NodeCard = ({ nodeDatum, toggleNode }: any) => {
+const NodeCard = ({ nodeDatum, toggleNode, onCreateProfile, isCreating }: any) => {
     const isMatch = !!nodeDatum.matched_candidate_id
     const hasChildren = nodeDatum.children && nodeDatum.children.length > 0
 
@@ -30,18 +34,28 @@ const NodeCard = ({ nodeDatum, toggleNode }: any) => {
                 <div className="p-2 h-full flex items-center justify-center">
                     <div
                         className={`
-                  relative w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm
                   border rounded-xl shadow-md hover:shadow-xl transition-all duration-300
                   flex flex-col items-center p-4 text-center group
-                  ${isMatch ? 'border-indigo-400/50 dark:border-indigo-500/50 ring-1 ring-indigo-50/50' : 'border-slate-200 dark:border-slate-700'}
+                  ${isMatch ? 'border-emerald-400 bg-emerald-50/90 dark:bg-emerald-950/40 ring-1 ring-emerald-100' : 'border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95'}
                   ${hasChildren ? 'cursor-pointer' : ''}
                 `}
                         onClick={hasChildren ? toggleNode : undefined}
                     >
-                        {/* Status Indicator */}
-                        <div className="absolute top-3 right-3">
+                        {/* Status Indicator & LinkedIn */}
+                        <div className="absolute top-3 right-3 flex gap-1.5 items-center">
+                            {nodeDatum.linkedin && (
+                                <div onClick={handleLinkClick}>
+                                    <CandidateLinkedinButton
+                                        checked={nodeDatum.checked || getCheckedStatus(nodeDatum.linkedin)}
+                                        linkedin={nodeDatum.linkedin}
+                                        candidateId={nodeDatum.candidate_id || `temp-${nodeDatum.node_id}`}
+                                        className="h-6 w-6"
+                                    />
+                                </div>
+                            )}
+
                             {isMatch ? (
-                                <div className="text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 p-1 rounded-full border border-indigo-100 dark:border-indigo-800" title="Matched Candidate">
+                                <div className="text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40 p-1 rounded-full border border-emerald-200" title="Matched Candidate">
                                     <UserCheck size={14} />
                                 </div>
                             ) : (
@@ -51,15 +65,26 @@ const NodeCard = ({ nodeDatum, toggleNode }: any) => {
                             )}
                         </div>
 
+                        {/* External Link Action */}
+                        {isMatch && nodeDatum.candidate_id && (
+                            <Link
+                                href={`/candidates/${nodeDatum.candidate_id}`}
+                                target="_blank"
+                                onClick={handleLinkClick}
+                                className="absolute top-3 left-3 text-slate-400 hover:text-emerald-600 transition-colors"
+                            >
+                                <ExternalLink size={14} />
+                            </Link>
+                        )}
+
                         {/* Avatar */}
                         <div className="mb-3 relative">
-                            <div className={`p-0.5 rounded-full border-2 ${isMatch ? 'border-indigo-200 bg-indigo-50' : 'border-slate-100 bg-slate-50 shadow-sm'}`}>
-                                <Avatar className="h-14 w-14">
-                                    <AvatarImage src={nodeDatum.candidate_photo || undefined} />
-                                    <AvatarFallback className={`${isMatch ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'}`}>
-                                        {nodeDatum.name.substring(0, 2).toUpperCase()}
-                                    </AvatarFallback>
-                                </Avatar>
+                            <div className={`p-0.5 rounded-full border-2 ${isMatch ? 'border-emerald-200 bg-emerald-100' : 'border-slate-100 bg-slate-50 shadow-sm'}`}>
+                                <CandidateAvatar
+                                    src={nodeDatum.candidate_photo}
+                                    name={nodeDatum.name}
+                                    className="h-14 w-14"
+                                />
                             </div>
                             {hasChildren && (
                                 <Badge className="absolute -bottom-1 -right-1 px-1.5 py-0 h-5 text-[10px] bg-indigo-600 text-white border-white border-2">
@@ -69,24 +94,39 @@ const NodeCard = ({ nodeDatum, toggleNode }: any) => {
                         </div>
 
                         {/* Info */}
-                        <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm line-clamp-1 mb-0.5">
-                            {nodeDatum.name}
-                        </h3>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold line-clamp-1 mb-2 uppercase tracking-tight">
-                            {nodeDatum.title || 'Position Not Set'}
-                        </p>
+                        <div className="flex flex-col items-center">
+                            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm line-clamp-1">
+                                {nodeDatum.name}
+                            </h3>
+                            {isMatch && nodeDatum.candidate_id && (
+                                <div className="text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded mt-0.5 mb-1">
+                                    {nodeDatum.candidate_id}
+                                </div>
+                            )}
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold line-clamp-1 uppercase tracking-tight">
+                                {nodeDatum.title || 'Position Not Set'}
+                            </p>
 
-                        {/* Action Link */}
-                        {isMatch && nodeDatum.candidate_id && (
-                            <Link
-                                href={`/candidates/${nodeDatum.candidate_id}`}
-                                target="_blank"
-                                onClick={handleLinkClick}
-                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                VIEW FULL PROFILE
-                            </Link>
-                        )}
+                            {!isMatch && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-[10px] px-2 gap-1 border-dashed border-emerald-500 text-emerald-600 hover:bg-emerald-50 mt-3"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onCreateProfile(nodeDatum.node_id);
+                                    }}
+                                    disabled={isCreating}
+                                >
+                                    {isCreating ? (
+                                        <Loader2 size={12} className="animate-spin" />
+                                    ) : (
+                                        <UserPlus size={12} />
+                                    )}
+                                    Create Profile
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </foreignObject>
@@ -95,10 +135,66 @@ const NodeCard = ({ nodeDatum, toggleNode }: any) => {
 }
 
 export function OrgChartViewer({ initialData }: OrgChartViewerProps) {
+    const searchParams = useSearchParams()
+    const uploadId = searchParams.get('id')
     const [translate, setTranslate] = useState({ x: 0, y: 0 })
     const [zoom, setZoom] = useState(0.7)
     const [showLegend, setShowLegend] = useState(false)
+    const [isBulkLoading, setIsBulkLoading] = useState(false)
+    const [creatingNodes, setCreatingNodes] = useState<Set<string>>(new Set())
     const containerRef = React.useRef<HTMLDivElement>(null)
+
+    // Find all unmatched nodes for bulk creation
+    const getUnmatchedNodes = (node: OrgNode | null): OrgNode[] => {
+        if (!node) return []
+        let results: OrgNode[] = []
+        if (!node.matched_candidate_id && node.node_id !== 'root-wrapper') {
+            results.push(node)
+        }
+        if (node.children) {
+            node.children.forEach(child => {
+                results = [...results, ...getUnmatchedNodes(child)]
+            })
+        }
+        return results
+    }
+
+    const unmatchedCount = getUnmatchedNodes(initialData).length
+
+    const handleBulkCreate = async () => {
+        if (!uploadId) return
+        try {
+            setIsBulkLoading(true)
+            const res = await bulkCreateOrgProfiles(uploadId as string)
+            const msg = `Successfully created ${res.count} profiles! ${(res.webhookCount ?? 0) > 0 ? `${res.webhookCount} webhooks sent to n8n.` : ''}`
+            toast.success(msg)
+        } catch (err) {
+            toast.error("Bulk creation failed. Check logs.")
+        } finally {
+            setIsBulkLoading(false)
+        }
+    }
+
+    const handleSingleCreate = async (nodeId: string) => {
+        try {
+            setCreatingNodes(prev => new Set(prev).add(nodeId))
+            const res = await createSingleOrgProfile(nodeId)
+            if (res.mode === 'n8n') {
+                toast.success("Profile created! Webhook sent to n8n for experience retrieval.")
+            } else {
+                toast.success("Profile and Current Job experience created successfully.")
+            }
+        } catch (err) {
+            console.error('[CreateSingle] Error:', err)
+            toast.error("Profile creation failed.")
+        } finally {
+            setCreatingNodes(prev => {
+                const next = new Set(prev)
+                next.delete(nodeId)
+                return next
+            })
+        }
+    }
 
     const centerChart = () => {
         if (containerRef.current) {
@@ -130,7 +226,25 @@ export function OrgChartViewer({ initialData }: OrgChartViewerProps) {
 
             {/* Action Buttons (Top Right) */}
             <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                    {/* Debug: {unmatchedCount} */}
+                    <Button
+                        variant="default"
+                        size="sm"
+                        className={cn(
+                            "h-9 px-4 shadow-md rounded-full text-[11px] font-bold gap-2 transition-all border-none",
+                            unmatchedCount > 0 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
+                        )}
+                        onClick={handleBulkCreate}
+                        disabled={isBulkLoading || unmatchedCount === 0}
+                    >
+                        {isBulkLoading ? (
+                            <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                            <Sparkles size={14} className={unmatchedCount > 0 ? "text-emerald-100" : "text-slate-300"} />
+                        )}
+                        CREATE ALL ({unmatchedCount})
+                    </Button>
                     <Button
                         variant="outline"
                         size="sm"
@@ -190,7 +304,13 @@ export function OrgChartViewer({ initialData }: OrgChartViewerProps) {
                     data={initialData}
                     translate={translate}
                     zoom={zoom}
-                    renderCustomNodeElement={(rd3tProps) => <NodeCard {...rd3tProps} />}
+                    renderCustomNodeElement={(rd3tProps) => (
+                        <NodeCard
+                            {...rd3tProps}
+                            onCreateProfile={handleSingleCreate}
+                            isCreating={creatingNodes.has((rd3tProps.nodeDatum as any).node_id)}
+                        />
+                    )}
                     orientation="vertical"
                     pathFunc="step"
                     separation={{ siblings: 1.5, nonSiblings: 2 }}

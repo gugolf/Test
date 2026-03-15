@@ -57,9 +57,10 @@ interface AddCandidateDialogProps {
     onOpenChange: (open: boolean) => void;
     jrId: string;
     onSuccess: () => void;
+    updatedBy?: string;
 }
 
-export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddCandidateDialogProps) {
+export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess, updatedBy }: AddCandidateDialogProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [results, setResults] = useState<any[]>([]);
     const [totalResults, setTotalResults] = useState(0);
@@ -210,7 +211,7 @@ export function AddCandidateDialog({ open, onOpenChange, jrId, onSuccess }: AddC
         }));
 
         setSubmitting(true);
-        const result = await bulkAddCandidatesToJR(jrId, candidatesPayload, listType);
+        const result = await bulkAddCandidatesToJR(jrId, candidatesPayload, listType, updatedBy);
         setSubmitting(false);
 
         if (!result.success) {
@@ -617,11 +618,11 @@ function FilterMultiSelect({ label, icon: Icon, options = [], selected, onChange
                     <CommandList>
                         <CommandEmpty>No results found.</CommandEmpty>
                         <CommandGroup className="max-h-64 overflow-y-auto">
-                            {options.map((option: string) => {
+                            {options.map((option: string, idx: number) => {
                                 const isSelected = tempSelected.includes(option);
                                 return (
                                     <CommandItem
-                                        key={option}
+                                        key={`${option}-${idx}`}
                                         value={option}
                                         onSelect={() => handleToggle(option)}
                                     >

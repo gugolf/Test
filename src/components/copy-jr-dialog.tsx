@@ -28,9 +28,10 @@ interface CopyJRDialogProps {
     onOpenChange: (open: boolean) => void;
     sourceJR: JobRequisition;
     onSuccess: (newJrId: string) => void;
+    updatedBy?: string;
 }
 
-export function CopyJRDialog({ open, onOpenChange, sourceJR, onSuccess }: CopyJRDialogProps) {
+export function CopyJRDialog({ open, onOpenChange, sourceJR, onSuccess, updatedBy }: CopyJRDialogProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
         job_title: `${sourceJR.job_title} (Copy)`,
@@ -72,7 +73,8 @@ export function CopyJRDialog({ open, onOpenChange, sourceJR, onSuccess }: CopyJR
             const result = await copyJobRequisition(sourceJR.id, {
                 job_title: formData.job_title,
                 division: formData.division,
-                department: formData.department
+                department: formData.department,
+                created_by: updatedBy
             });
 
             if (result.success && result.newJrId) {

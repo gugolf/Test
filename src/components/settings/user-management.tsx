@@ -225,9 +225,9 @@ export function UserManagement() {
                         <div className="space-y-2">
                             <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Role</Label>
                             <div className="flex gap-2">
-                                {['user', 'admin'].map(role => (
+                                {['user', 'admin'].map((role, idx) => (
                                     <button
-                                        key={role}
+                                        key={`${role}-${idx}`}
                                         onClick={() => setFormData({ ...formData, role })}
                                         className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border transition-all ${formData.role === role
                                                 ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/20'

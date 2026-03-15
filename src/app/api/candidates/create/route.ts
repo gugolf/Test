@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/lib/supabase/server';
 
-// Initialize Supabase Client (Service Role needed for reliable ID checking maybe? 
-// Actually try to use anon if possible, but for ID generation we might need consistency.
-// The user provided config uses Service Key as Anon Key in .env.local workaround, so standard client is fine.)
+// Initialize Supabase Client (Service Role needed for reliable ID checking)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!; // Use Service Key for backend ops to be safe
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!; 
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -15,7 +14,12 @@ import { getCheckedStatus } from '@/lib/candidate-utils';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { name, email, phone, position, nationality } = body;
+        const { name, email, phone, position, nationality, createdBy: explicitCreatedBy } = body;
+
+        // Get current user for audit trail (Fallback)
+        const supabaseServer = await createServerClient();
+        const { data: { user } } = await supabaseServer.auth.getUser();
+        const createdBy = explicitCreatedBy || user?.email || 'Manual Input';
 
         if (!name) {
             return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -66,7 +70,8 @@ export async function POST(req: NextRequest) {
                     housing_for_expat_b_mth: body.housing_for_expat_b_mth || null,
                     others_benefit: body.others_benefit || null,
                     created_date: new Date().toISOString(),
-                    modify_date: new Date().toISOString()
+                    modify_date: new Date().toISOString(),
+                    created_by: createdBy
                 }
             ]);
 

@@ -353,7 +353,8 @@ export async function addCandidatesToJR(
 export async function bulkAddCandidatesToJR(
     jrId: string,
     candidates: { id: string, name: string }[],
-    listType: string = 'Longlist'
+    listType: string = 'Longlist',
+    addedByOverride?: string
 ): Promise<{ success: boolean; added: number; duplicates: string[]; blacklisted: string[]; error?: string }> {
     const supabase = adminAuthClient;
 
@@ -361,7 +362,7 @@ export async function bulkAddCandidatesToJR(
         if (candidates.length === 0) return { success: true, added: 0, duplicates: [], blacklisted: [] };
 
         // Get current user email for tracking
-        const addedBy = await getCurrentUserEmail();
+        const addedBy = addedByOverride || await getCurrentUserEmail();
 
         // 0. Check for Blacklisted Candidates
         const candidateIdsToCheck = candidates.map(c => c.id);
@@ -472,6 +473,7 @@ export async function bulkAddCandidatesToJR(
                 jr_candidate_id: jrCandidateId,
                 status: 'Pool Candidate',
                 updated_By: addedBy,
+                updated_by: addedBy,
                 timestamp: timestampStr
             });
 

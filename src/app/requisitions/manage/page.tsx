@@ -25,7 +25,9 @@ import { ReportViewDialog } from "@/components/report-view-dialog";
 import { triggerReport } from "@/app/actions/n8n-actions";
 import { CopyJRDialog } from "@/components/copy-jr-dialog";
 import { toast } from "sonner";
-import { deleteJobRequisition } from "@/app/actions/requisitions";
+import { deleteJobRequisition, getUserProfiles } from "@/app/actions/requisitions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { User } from "lucide-react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -58,6 +60,29 @@ export default function JRManagePage() {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
+
+    // Audit State
+    const [profiles, setProfiles] = useState<{ email: string; real_name: string }[]>([]);
+    const [selectedCreatedBy, setSelectedCreatedBy] = useState<string>("");
+
+    // Load Profiles and Auth User
+    useEffect(() => {
+        async function loadAuditData() {
+            try {
+                const [userProfiles, { getCurrentUserRealName }] = await Promise.all([
+                    getUserProfiles(),
+                    import("@/app/actions/user-actions")
+                ]);
+                setProfiles(userProfiles);
+                
+                const realName = await getCurrentUserRealName();
+                setSelectedCreatedBy(realName);
+            } catch (e) {
+                console.error("Failed to load audit data", e);
+            }
+        }
+        loadAuditData();
+    }, []);
 
     // Sync URL with Tab
     const handleTabChange = (val: string) => {
@@ -172,8 +197,23 @@ export default function JRManagePage() {
 
                 {/* Header / Switcher Bar */}
                 <div className="flex flex-col lg:flex-row justify-between lg:items-start gap-6 border-b pb-6">
-                    <div className="flex flex-col gap-2">
-                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Job Requisition Manage</h1>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex items-center gap-4">
+                            <h1 className="text-2xl font-bold tracking-tight text-foreground">Job Requisition Manage</h1>
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                                <User className="h-4 w-4 text-indigo-600" />
+                                <Select value={selectedCreatedBy} onValueChange={setSelectedCreatedBy}>
+                                    <SelectTrigger className="h-7 border-none bg-transparent shadow-none focus:ring-0 text-xs font-bold text-indigo-700 min-w-[140px] p-0">
+                                        <SelectValue placeholder="Updated by..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {profiles.map((p, idx) => (
+                                            <SelectItem key={`${p.email}-${idx}`} value={p.real_name} className="text-xs">{p.real_name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
                         <div className="flex gap-4 items-center">
                             <JRSwitcher
                                 selectedId={selectedJR?.id}
@@ -207,6 +247,8 @@ export default function JRManagePage() {
                                     </DialogHeader>
                                     <CreateJobRequisitionForm
                                         onCancel={() => setIsCreateOpen(false)}
+                                        selectedCreatedBy={selectedCreatedBy}
+                                        profiles={profiles}
                                         onSuccess={(newJR) => {
                                             setIsCreateOpen(false);
                                             setSelectedJR(newJR);
@@ -284,6 +326,8 @@ export default function JRManagePage() {
                                     {selectedJR && (
                                         <CreateJobRequisitionForm
                                             initialData={selectedJR}
+                                            selectedCreatedBy={selectedCreatedBy}
+                                            profiles={profiles}
                                             onCancel={() => setIsEditOpen(false)}
                                             onSuccess={(updatedJR) => {
                                                 setIsEditOpen(false);
@@ -379,11 +423,11 @@ export default function JRManagePage() {
                                 </div>
 
                                 <TabsContent value="list" className="mt-0">
-                                    <CandidateList key={`list-${selectedJR.id}-${refreshKey}`} jrId={selectedJR.id} jobTitle={selectedJR.job_title} bu={selectedJR.division} subBu={selectedJR.department} />
+                                    <CandidateList key={`list-${selectedJR.id}-${refreshKey}`} jrId={selectedJR.id} jobTitle={selectedJR.job_title} bu={selectedJR.division} subBu={selectedJR.department} updatedBy={selectedCreatedBy} />
                                 </TabsContent>
 
                                 <TabsContent value="kanban" className="mt-0">
-                                    <KanbanBoard key={`kanban-${selectedJR.id}-${refreshKey}`} jrId={selectedJR.id} jobTitle={selectedJR.job_title} bu={selectedJR.division} subBu={selectedJR.department} />
+                                    <KanbanBoard key={`kanban-${selectedJR.id}-${refreshKey}`} jrId={selectedJR.id} jobTitle={selectedJR.job_title} bu={selectedJR.division} subBu={selectedJR.department} updatedBy={selectedCreatedBy} />
                                 </TabsContent>
                             </Tabs>
                         </div>
@@ -409,6 +453,7 @@ export default function JRManagePage() {
                         open={isAddCandOpen}
                         onOpenChange={setIsAddCandOpen}
                         jrId={selectedJR.id}
+                        updatedBy={selectedCreatedBy}
                         onSuccess={() => {
                             setRefreshKey(prev => prev + 1);
                             // Also refresh analytics
@@ -442,6 +487,7 @@ export default function JRManagePage() {
                         open={isCopyDialogOpen}
                         onOpenChange={setIsCopyDialogOpen}
                         sourceJR={selectedJR}
+                        updatedBy={selectedCreatedBy}
                         onSuccess={(newId) => {
                             handleTabSelect(newId); // Select the new JR automatically
                         }}

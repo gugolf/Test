@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Papa from "papaparse";
 import { processCsvUpload } from "@/app/actions/csv-actions";
-import { createUploadRecord } from "@/app/actions/resume-actions";
+import { createUploadRecord, handleDuplicateResume } from "@/app/actions/resume-actions";
 import { getJobRequisitions } from "@/app/actions/requisitions";
 import { bulkAddCandidatesToJR } from "@/app/actions/jr-candidates";
 import { getStatuses } from "@/app/actions/candidate-filters";
+import { getUserProfiles, UserProfile } from "@/app/actions/user-actions";
 import { createClient } from "@/utils/supabase/client";
 import { updateUploadCandidateStatus } from "@/app/actions/resume-actions"; // Import update action
 // Ensure ResumeUpload is exported correctly in src/components/ResumeUpload.tsx
@@ -30,7 +31,8 @@ import {
     CheckSquare,
     Square,
     FileText,
-    Layers
+    Layers,
+    AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +60,7 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
+import { Label } from "@/components/ui/label";
 
 interface UploadLog {
     id: number | string; // UUID for resume, Int for CSV
@@ -94,9 +97,23 @@ export default function CandidateImportPage() {
     const [files, setFiles] = useState<File | null>(null);
     const [dragActive, setDragActive] = useState(false);
 
+    // Manual Add State
+    const [openManualDialog, setOpenManualDialog] = useState(false);
+    const [manualName, setManualName] = useState("");
+    const [manualLinkedin, setManualLinkedin] = useState("");
+
     // Selection & JR Logic
     const [selectedIds, setSelectedIds] = useState<(number | string)[]>([]); // Log IDs
     const [openJRDialog, setOpenJRDialog] = useState(false);
+    
+    // Duplicate Handling State
+    const [openDuplicateDialog, setOpenDuplicateDialog] = useState(false);
+    const [duplicateData, setDuplicateData] = useState<{
+        existingRecord: any;
+        newResumeUrl: string;
+        fileName: string;
+    } | null>(null);
+    const [processingDuplicate, setProcessingDuplicate] = useState(false);
     const [jrs, setJrs] = useState<JobRequisition[]>([]);
     const [loadingJrs, setLoadingJrs] = useState(false);
     const [jrSearch, setJrSearch] = useState("");
@@ -109,6 +126,10 @@ export default function CandidateImportPage() {
     const [userFilter, setUserFilter] = useState<string>("all");
     const [sortConfig, setSortConfig] = useState<{ key: keyof UploadLog; direction: 'asc' | 'desc' } | null>(null);
 
+    // Created By Selection
+    const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
+    const [selectedCreatedBy, setSelectedCreatedBy] = useState<string>("Manual Input");
+
     // Status Master Data
     const [statusOptions, setStatusOptions] = useState<{ status: string, color: string }[]>([]);
 
@@ -118,7 +139,19 @@ export default function CandidateImportPage() {
     useEffect(() => {
         const supabase = createClient();
         supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserEmail(user?.email || '');
+            const email = user?.email || '';
+            setUserEmail(email);
+            
+            // Fetch profiles and set default Created By
+            getUserProfiles().then(res => {
+                if (res.success && res.data) {
+                    setUserProfiles(res.data);
+                    const currentUser = res.data.find(p => p.email.toLowerCase() === email.toLowerCase());
+                    if (currentUser) {
+                        setSelectedCreatedBy(currentUser.real_name);
+                    }
+                }
+            });
         });
     }, []);
 
@@ -226,10 +259,7 @@ export default function CandidateImportPage() {
                         }
                     }
 
-                    // Use real logged-in user email
-                    const uploaderEmail = userEmail || 'unknown';
-
-                    const res = await processCsvUpload(rows, uploaderEmail);
+                    const res = await processCsvUpload(rows, selectedCreatedBy);
 
                     if (res.success) {
                         toast.success(`Processed ${res.totalProcessed} records. ${res.newCandidates} new, ${res.duplicates} duplicates.`);
@@ -254,6 +284,35 @@ export default function CandidateImportPage() {
         }
     };
 
+    const handleManualSubmit = async () => {
+        if (!manualName || !manualLinkedin) return;
+
+        setUploading(true);
+        try {
+            const rows = [{
+                Name: manualName,
+                LinkedIn: manualLinkedin
+            }];
+
+            const res = await processCsvUpload(rows, selectedCreatedBy);
+
+            if (res.success) {
+                toast.success(`Candidate ${manualName} submitted for scraping.`);
+                setOpenManualDialog(false);
+                setManualName("");
+                setManualLinkedin("");
+                fetchLogs();
+            } else {
+                toast.error("Submission failed: " + res.error);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Something went wrong");
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleResumeUploadComplete = async (files: UploadedFile[]) => {
         // Filter only success files
         const successFiles = files.filter(f => f.status === 'success' && f.url);
@@ -263,16 +322,57 @@ export default function CandidateImportPage() {
             const res = await createUploadRecord({
                 file_name: f.file.name,
                 resume_url: f.url!,
-                uploader_email: userEmail || 'unknown'
+                uploader_email: selectedCreatedBy
             });
 
             if (!res.success) {
-                toast.error(`Failed to save record for ${f.file.name}`);
+                if ((res as any).isDuplicate) {
+                    setDuplicateData({
+                        existingRecord: (res as any).existingRecord,
+                        newResumeUrl: f.url!,
+                        fileName: f.file.name
+                    });
+                    setOpenDuplicateDialog(true);
+                    // We stop the loop for now to handle the prompt? 
+                    // Actually, if multiple duplicates, this will only show the last one if we don't wait.
+                    // For now, let's assume it's one by one or we might need a queue.
+                    // User usually uploads few at a time.
+                } else {
+                    toast.error(`Failed to save record for ${f.file.name}`);
+                }
             }
         }
 
         // Refresh logs to see new pending items
         fetchLogs();
+    };
+
+    const handleDuplicateChoice = async (choice: 'update' | 'attach' | 'no-action') => {
+        if (!duplicateData) return;
+        
+        setProcessingDuplicate(true);
+        try {
+            const res = await handleDuplicateResume(
+                choice,
+                duplicateData.existingRecord,
+                duplicateData.newResumeUrl,
+                userEmail || 'unknown'
+            );
+
+            if (res.success) {
+                toast.success(res.message || "Action completed");
+                setOpenDuplicateDialog(false);
+                setDuplicateData(null);
+                fetchLogs();
+            } else {
+                toast.error(res.error || "Failed to process choice");
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Something went wrong");
+        } finally {
+            setProcessingDuplicate(false);
+        }
     };
 
     // --- JR Selection Logic ---
@@ -456,6 +556,25 @@ export default function CandidateImportPage() {
                         <p className="text-muted-foreground mt-1">Bulk upload candidates via CSV or AI Resume Parsing.</p>
                     </div>
 
+                    <div className="flex items-center gap-3 bg-white/50 p-2 rounded-lg border border-slate-100 shadow-sm">
+                        <Label htmlFor="global-created-by" className="text-xs font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                            Created By:
+                        </Label>
+                        <Select value={selectedCreatedBy} onValueChange={setSelectedCreatedBy}>
+                            <SelectTrigger id="global-created-by" className="w-[220px] bg-white border-slate-200 h-9 text-sm font-medium">
+                                <SelectValue placeholder="Selecting creator..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Manual Input">Manual Input</SelectItem>
+                                {userProfiles.map((profile, idx) => (
+                                    <SelectItem key={`${profile.email}-${idx}`} value={profile.real_name}>
+                                        {profile.real_name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
                     <div className="flex gap-2">
                         {/* Add to JR Button */}
                         {selectedIds.length > 0 && (
@@ -483,6 +602,51 @@ export default function CandidateImportPage() {
                                 </DialogHeader>
                                 <div className="py-4 space-y-4">
                                     <ResumeUpload onUploadComplete={handleResumeUploadComplete} />
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+
+                        {/* Manual Add Dialog */}
+                        <Dialog open={openManualDialog} onOpenChange={setOpenManualDialog}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Manual Add
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Manual Candidate Addition</DialogTitle>
+                                    <DialogDescription>
+                                        Enter name and LinkedIn URL to trigger AI scraping.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="manual-name">Full Name</Label>
+                                        <Input
+                                            id="manual-name"
+                                            placeholder="Enter name"
+                                            value={manualName}
+                                            onChange={(e) => setManualName(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="manual-linkedin">LinkedIn URL</Label>
+                                        <Input
+                                            id="manual-linkedin"
+                                            placeholder="https://www.linkedin.com/in/..."
+                                            value={manualLinkedin}
+                                            onChange={(e) => setManualLinkedin(e.target.value)}
+                                        />
+                                    </div>
+                                    <Button
+                                        onClick={handleManualSubmit}
+                                        disabled={!manualName || !manualLinkedin || uploading}
+                                        className="w-full bg-indigo-600 hover:bg-indigo-700"
+                                    >
+                                        {uploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                                        Submit for Scraping
+                                    </Button>
                                 </div>
                             </DialogContent>
                         </Dialog>
@@ -586,7 +750,7 @@ export default function CandidateImportPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Statuses</SelectItem>
-                                    {uniqueStatuses.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+                                    {uniqueStatuses.map((status, idx) => <SelectItem key={`${status}-${idx}`} value={status}>{status}</SelectItem>)}
                                 </SelectContent>
                             </Select>
 
@@ -596,7 +760,7 @@ export default function CandidateImportPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Users</SelectItem>
-                                    {uniqueUsers.map(user => <SelectItem key={user} value={user}>{user}</SelectItem>)}
+                                    {uniqueUsers.map((user, idx) => <SelectItem key={`${user}-${idx}`} value={user}>{user}</SelectItem>)}
                                 </SelectContent>
                             </Select>
 
@@ -796,6 +960,58 @@ export default function CandidateImportPage() {
                             Confirm & Add
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Duplicate Resume Dialog */}
+            <Dialog open={openDuplicateDialog} onOpenChange={setOpenDuplicateDialog}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <AlertCircle className="w-5 h-5 text-amber-500" /> Duplicate Resume Detected
+                        </DialogTitle>
+                        <DialogDescription>
+                            File <strong>{duplicateData?.fileName}</strong> has already been uploaded. 
+                            {duplicateData?.existingRecord?.candidate_id && (
+                                <span> Linked to candidate <strong>{duplicateData.existingRecord.candidate_id}</strong>.</span>
+                            )}
+                            What would you like to do?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-1 gap-3 py-4">
+                        <Button 
+                            variant="outline" 
+                            className="justify-start h-auto p-4 flex flex-col items-start gap-1 hover:bg-indigo-50 hover:border-indigo-200"
+                            onClick={() => handleDuplicateChoice('update')}
+                            disabled={processingDuplicate}
+                        >
+                            <span className="font-bold flex items-center gap-2">
+                                <RefreshCw className={cn("w-4 h-4", processingDuplicate && "animate-spin")} /> Update Information
+                            </span>
+                            <span className="text-xs text-slate-500">Re-trigger AI to parse and overwrite existing data.</span>
+                        </Button>
+
+                        <Button 
+                            variant="outline" 
+                            className="justify-start h-auto p-4 flex flex-col items-start gap-1 hover:bg-emerald-50 hover:border-emerald-200"
+                            onClick={() => handleDuplicateChoice('attach')}
+                            disabled={processingDuplicate || !duplicateData?.existingRecord?.candidate_id}
+                        >
+                            <span className="font-bold flex items-center gap-2">
+                                <PlusCircle className="w-4 h-4" /> Attach Resume Only
+                            </span>
+                            <span className="text-xs text-slate-500">Keep existing data but update the resume file link.</span>
+                        </Button>
+
+                        <Button 
+                            variant="ghost" 
+                            className="justify-center"
+                            onClick={() => handleDuplicateChoice('no-action')}
+                            disabled={processingDuplicate}
+                        >
+                            No Action (Skip)
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

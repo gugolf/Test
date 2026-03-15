@@ -12,8 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { StatusLog } from "@/types/requisition";
 import { addActivityLog, updateActivityLog, deleteActivityLog } from "@/app/actions/jr-candidate-logs";
+import { getUserProfiles, UserProfile, getCurrentUserRealName } from "@/app/actions/user-actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 interface CandidateActivityLogProps {
     logs: StatusLog[];
@@ -25,20 +27,41 @@ export function CandidateActivityLog({ logs, jrCandidateId }: CandidateActivityL
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [editingLog, setEditingLog] = useState<StatusLog | null>(null);
+    const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
     const [formData, setFormData] = useState({
         status: "",
-        note: ""
+        note: "",
+        updatedBy: ""
     });
+
+    useEffect(() => {
+        async function loadUsers() {
+            const res = await getUserProfiles();
+            if (res.success && res.data) {
+                setUserProfiles(res.data);
+            }
+            const currentName = await getCurrentUserRealName();
+            if (currentName) {
+                setFormData(prev => ({ ...prev, updatedBy: currentName }));
+            }
+        }
+        loadUsers();
+    }, []);
 
     const handleAdd = () => {
         setEditingLog(null);
-        setFormData({ status: "Pool Candidate", note: "" });
+        // Reset but keep the last selected or current user if possible
+        setFormData(prev => ({ ...prev, status: "Pool Candidate", note: "" }));
         setIsDialogOpen(true);
     };
 
     const handleEdit = (log: StatusLog) => {
         setEditingLog(log);
-        setFormData({ status: log.status, note: log.note || "" });
+        setFormData({ 
+            status: log.status, 
+            note: log.note || "", 
+            updatedBy: log.updated_By || "" 
+        });
         setIsDialogOpen(true);
     };
 
@@ -65,9 +88,9 @@ export function CandidateActivityLog({ logs, jrCandidateId }: CandidateActivityL
         try {
             let res;
             if (editingLog) {
-                res = await updateActivityLog(editingLog.log_id, formData.status, formData.note);
+                res = await updateActivityLog(editingLog.log_id, formData.status, formData.note, formData.updatedBy);
             } else {
-                res = await addActivityLog(jrCandidateId, formData.status, formData.note);
+                res = await addActivityLog(jrCandidateId, formData.status, formData.note, formData.updatedBy);
             }
 
             if (res.success) {
@@ -176,6 +199,25 @@ export function CandidateActivityLog({ logs, jrCandidateId }: CandidateActivityL
                                     <SelectItem value="Placement">Placement</SelectItem>
                                     <SelectItem value="Rejected">Rejected</SelectItem>
                                     <SelectItem value="Blacklist">Blacklist</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="updatedBy" className="text-xs font-black uppercase text-slate-500">Updated By</Label>
+                            <Select
+                                value={formData.updatedBy}
+                                onValueChange={(v) => setFormData(prev => ({ ...prev, updatedBy: v }))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Recruiter / Admin" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="System">System</SelectItem>
+                                    {userProfiles.map((user, idx) => (
+                                        <SelectItem key={`${user.email}-${idx}`} value={user.real_name}>
+                                            {user.real_name}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>

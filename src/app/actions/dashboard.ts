@@ -22,90 +22,115 @@ export interface CompanySalaryStat {
 }
 
 // Logic: Current > Past (Latest by start_date)
+/**
+ * REVISED SELECTION LOGIC:
+ * 1. Find is_current_job = 'Current'
+ * 2. If multiple, take latest start_date
+ * 3. If no 'Current', take latest start_date across all experiences
+ */
 function getPrimaryJob(experiences: any[]): any | null {
     if (!experiences || experiences.length === 0) return null;
 
-    // 1. Try to find 'Current' (is_current_job = 'Current')
     const currents = experiences.filter(e => e.is_current_job === 'Current');
     if (currents.length > 0) {
-        // Sort by start_date desc
         return currents.sort((a, b) => new Date(b.start_date || 0).getTime() - new Date(a.start_date || 0).getTime())[0];
     }
 
-    // 2. If no Current, take 'Past' (Latest by end_date or start_date)
-    return experiences.sort((a, b) => new Date(b.end_date || b.start_date || 0).getTime() - new Date(a.end_date || a.start_date || 0).getTime())[0];
-}
-
-async function getCandidatesWithPrimaryJobs(client: any) {
-    // FETCH ALL with Pagination (Bypassing 1000 limit)
-    let allExps: any[] = [];
-    let page = 0;
-    const pageSize = 1000;
-    let hasMore = true;
-
-    // Safety limit: 30 pages (30k rows) just in case
-    while (hasMore && page < 50) {
-        const { data, error } = await client
-            .from("candidate_experiences")
-            .select("candidate_id, country, company, is_current_job, start_date, end_date, company_industry, company_group, position")
-            .range(page * pageSize, (page + 1) * pageSize - 1);
-
-        if (error) {
-            console.error("Fetch Error:", error);
-            break;
-        }
-
-        if (data && data.length > 0) {
-            allExps = allExps.concat(data);
-            page++;
-            if (data.length < pageSize) hasMore = false;
-        } else {
-            hasMore = false;
-        }
-    }
-
-    // Group by Candidate ID
-    const grouped: Record<string, any[]> = {};
-    allExps.forEach((exp: any) => {
-        if (!grouped[exp.candidate_id]) grouped[exp.candidate_id] = [];
-        grouped[exp.candidate_id].push(exp);
-    });
-
-    // Select Primary Job for each Candidate
-    const primaryJobs: any[] = [];
-    Object.values(grouped).forEach(exps => {
-        const primary = getPrimaryJob(exps);
-        if (primary && primary.company) {
-            primaryJobs.push(primary);
-        }
-    });
-
-    return primaryJobs;
+    return experiences.sort((a, b) => new Date(b.start_date || 0).getTime() - new Date(a.start_date || 0).getTime())[0];
 }
 
 export async function getGlobalPoolDisplay() {
     const client = adminAuthClient as any;
 
-    // 1. Get Deduplicated Primary Jobs (Full Fetch)
-    const currentJobs = await getCandidatesWithPrimaryJobs(client);
+    console.log("Starting Global Pool Data Fetch...");
 
-    // 2. Aggregate
-    const countryAgg: Record<string, { count: Set<string>, companies: Set<string> }> = {};
-    const regionAgg: Record<string, Record<string, number>> = {
-        "Asia": {},
-        "Europe": {},
-        "South and North America": {},
-        "Africa": {},
-        "Oceania": {},
-        "Other": {}
-    };
+    // 1. Fetch ALL Candidate Profiles (Base: 7,134)
+    let profiles: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+    while (hasMore && page < 50) {
+        const { data, error } = await client.from("Candidate Profile").select("candidate_id, name, age, gender").range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) break;
+        if (data && data.length > 0) {
+            profiles = profiles.concat(data);
+            page++;
+            if (data.length < pageSize) hasMore = false;
+        } else { hasMore = false; }
+    }
 
-    // Helper to normalize country map
+    // 2. Fetch ALL Experiences
+    let allExps: any[] = [];
+    page = 0;
+    hasMore = true;
+    while (hasMore && page < 100) {
+        const { data, error } = await client.from("candidate_experiences").select("*").range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) break;
+        if (data && data.length > 0) {
+            allExps = allExps.concat(data);
+            page++;
+            if (data.length < pageSize) hasMore = false;
+        } else { hasMore = false; }
+    }
+
+    // 3. Fetch Company Master for metadata (Rating, Set)
+    const { data: companyMaster } = await client.from("company_master").select("*");
+    const companyLookup: Record<number, any> = {};
+    if (companyMaster) {
+        companyMaster.forEach((c: any) => companyLookup[c.company_id] = c);
+    }
+
+    // 4. Fetch country to continent mapping
     const { data: countryMaster } = await client.from("country").select("country, continent");
     const countryToContinent: Record<string, string> = {};
-    if (countryMaster) {
-        countryMaster.forEach((c: any) => countryToContinent[c.country] = c.continent);
+    if (countryMaster) countryMaster.forEach((c: any) => countryToContinent[c.country?.trim()] = c.continent);
+
+    // 5. Fetch JR mapping & JR details
+    let jrCandidates: any[] = [];
+    page = 0;
+    hasMore = true;
+    while (hasMore && page < 20) {
+        const { data, error } = await client.from("jr_candidates").select("candidate_id, jr_id, list_type").range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) break;
+        if (data && data.length > 0) {
+            jrCandidates = jrCandidates.concat(data);
+            page++;
+            if (data.length < pageSize) hasMore = false;
+        } else { hasMore = false; }
     }
+
+    const { data: jrDetails } = await client.from("job_requisitions").select("jr_id, position_jr, bu, sub_bu");
+    
+    const jrMap: Record<string, any> = {};
+    if (jrDetails) jrDetails.forEach((jr: any) => jrMap[jr.jr_id] = jr);
+
+    const candToJRs: Record<string, { jr_id: string, jr_name: string, bu: string, sub_bu: string, list_type: string }[]> = {};
+    if (jrCandidates) {
+        jrCandidates.forEach((jrc: any) => {
+            const detail = jrMap[jrc.jr_id];
+            if (!candToJRs[jrc.candidate_id]) candToJRs[jrc.candidate_id] = [];
+            
+            // Format JR Name as "JR_ID - Position" for better clarity
+            const formattedName = detail?.position_jr 
+                ? `${jrc.jr_id} - ${detail.position_jr}`
+                : jrc.jr_id;
+
+            candToJRs[jrc.candidate_id].push({
+                jr_id: jrc.jr_id,
+                jr_name: formattedName,
+                bu: detail?.bu || "N/A",
+                sub_bu: detail?.sub_bu || "N/A",
+                list_type: jrc.list_type
+            });
+        });
+    }
+
+    // --- Processing Logic ---
+    const groupedExps: Record<string, any[]> = {};
+    allExps.forEach((exp: any) => {
+        if (!groupedExps[exp.candidate_id]) groupedExps[exp.candidate_id] = [];
+        groupedExps[exp.candidate_id].push(exp);
+    });
 
     const mapContinentToGroup = (rawContinent: string | null): string => {
         if (!rawContinent) return "Other";
@@ -118,101 +143,111 @@ export async function getGlobalPoolDisplay() {
         return "Other";
     };
 
-    const uniqueCompanies = new Set<string>();
+    // Build the Final Raw Jobs Object (One per profile)
+    const rawJobs = profiles.map((p: any) => {
+        const exps = groupedExps[p.candidate_id] || [];
+        const primary = getPrimaryJob(exps);
+        const masterComp = primary?.company_id ? companyLookup[primary.company_id] : null;
+        
+        const candidateJRs = candToJRs[p.candidate_id] || [];
+        const isTopProfile = candidateJRs.some(j => j.list_type === 'Top profile');
 
-    // For Filters
-    const industries = new Set<string>();
-    const groups = new Set<string>();
-    const positions = new Set<string>();
-    const companiesSet = new Set<string>();
-
-    currentJobs.forEach((job: any) => {
-        const c = job.country?.trim() || "Unknown";
-        if (!countryAgg[c]) countryAgg[c] = { count: new Set(), companies: new Set() };
-        countryAgg[c].count.add(job.candidate_id);
-        if (job.company) {
-            countryAgg[c].companies.add(job.company);
-            uniqueCompanies.add(job.company);
-        }
-
-        // Region Agg
-        const rawCont = countryToContinent[c];
-        const group = mapContinentToGroup(rawCont);
-        const uiGroupKey = group === "America" ? "South and North America" : group;
-
-        if (!regionAgg[uiGroupKey]) regionAgg[uiGroupKey] = {};
-        const compName = job.company || "Unknown";
-        regionAgg[uiGroupKey][compName] = (regionAgg[uiGroupKey][compName] || 0) + 1;
-
-        // Filters
-        if (job.company_industry) industries.add(job.company_industry);
-        if (job.company_group) groups.add(job.company_group);
-        if (job.position) positions.add(job.position);
-        companiesSet.add(job.company);
+        return {
+            candidate_id: p.candidate_id,
+            name: p.name,
+            age: p.age || 0,
+            gender: p.gender || "Unknown",
+            // Geography
+            country: primary?.country?.trim() || "Unknown",
+            continent: mapContinentToGroup(countryToContinent[primary?.country?.trim()]),
+            // Company info
+            company: masterComp?.company_master || primary?.company || "Unknown",
+            company_id: primary?.company_id || null,
+            industry: masterComp?.industry || primary?.company_industry || "Unknown",
+            group: masterComp?.group || primary?.company_group || "Unknown",
+            rating: masterComp?.rating || "N/A",
+            set: masterComp?.set || "N/A",
+            // JRs
+            jrs: candidateJRs, // Array of JR objects for complex filtering
+            jr_names: candidateJRs.map(j => j.jr_name),
+            bus: candidateJRs.map(j => j.bu),
+            sub_bus: candidateJRs.map(j => j.sub_bu),
+            list_types: candidateJRs.map(j => j.list_type),
+            is_top_profile: isTopProfile
+        };
     });
 
-    // 3. Format Output for Frontend (Client-side Aggregation)
-    const rawJobs = currentJobs.map((j: any) => ({
-        country: j.country,
-        continent: mapContinentToGroup(countryToContinent[j.country?.trim()]),
-        company: j.company,
-        industry: j.company_industry,
-        group: j.company_group,
-        position: j.position
+    // Build a complete list of all JRs for the frontend cascading filter
+    const allJRs = Object.values(jrMap).map(jr => ({
+        jr_id: jr.jr_id,
+        jr_name: jr.position_jr ? `${jr.jr_id} - ${jr.position_jr}` : jr.jr_id,
+        bu: jr.bu || "N/A",
+        sub_bu: jr.sub_bu || "N/A"
     }));
-
-    // Generate Initial Stats
-    const stats: GlobalPoolStat[] = Object.keys(countryAgg).map(c => ({
-        country: c,
-        continent: mapContinentToGroup(countryToContinent[c]),
-        count: countryAgg[c].count.size,
-        companies: countryAgg[c].companies.size
-    }));
-
-    const regionTables: Record<string, any[]> = {};
-    Object.keys(regionAgg).forEach(r => {
-        const companies = Object.keys(regionAgg[r]).map(comp => ({
-            company: comp,
-            count: regionAgg[r][comp]
-        }));
-        companies.sort((a, b) => b.count - a.count);
-        regionTables[r] = companies.slice(0, 50);
-    });
 
     return {
         rawJobs,
-        stats: stats.sort((a, b) => b.count - a.count),
-        regionTables,
-        totalCandidates: currentJobs.length,
-        totalCompanies: uniqueCompanies.size,
-        totalCountries: Object.keys(countryAgg).length,
+        allJRs, // Send full list to frontend
+        totalCandidates: rawJobs.length,
+        // Pre-calculated filter options for initial load
         filterOptions: {
-            continents: Array.from(new Set(Object.values(countryToContinent).map(mapContinentToGroup).filter(c => c !== "Other"))).sort(),
-            industries: Array.from(industries).sort(),
-            groups: Array.from(groups).sort(),
-            companies: Array.from(companiesSet).sort(),
-            positions: Array.from(positions).sort().slice(0, 1000)
+            jr_names: Array.from(new Set([
+                ...rawJobs.flatMap(j => j.jr_names),
+                ...Object.values(jrMap).map(jr => jr.position_jr ? `${jr.jr_id} - ${jr.position_jr}` : jr.jr_id)
+            ])).sort(),
+            bus: Array.from(new Set([
+                ...rawJobs.flatMap(j => j.bus),
+                ...Object.values(jrMap).map(jr => jr.bu || "N/A")
+            ])).sort(),
+            sub_bus: Array.from(new Set([
+                ...rawJobs.flatMap(j => j.sub_bus),
+                ...Object.values(jrMap).map(jr => jr.sub_bu || "N/A")
+            ])).sort(),
+            ratings: Array.from(new Set(rawJobs.map(j => j.rating.toString()))).sort(),
+            sets: Array.from(new Set(rawJobs.map(j => j.set))).sort(),
+            industries: Array.from(new Set(rawJobs.map(j => j.industry))).sort(),
+            groups: Array.from(new Set(rawJobs.map(j => j.group))).sort(),
+            companies: Array.from(new Set(rawJobs.map(j => j.company))).sort(),
+            continents: ["Asia", "Europe", "America", "Africa", "Oceania"]
         }
     };
 }
 
+
 export async function getMarketSalaryStats() {
     const client = adminAuthClient as any;
 
-    // 1. Get Primary Jobs (Re-use call or optimize)
-    // To ensure consistency, we call the same function. 
-    // It's expensive to call twice but safer. Ideally we cache or client calls once.
-    // For now, simple call.
-    const currentJobs = await getCandidatesWithPrimaryJobs(client);
-    const expMap: Record<string, any> = {};
-    currentJobs.forEach(e => expMap[e.candidate_id] = e);
-
-    // 2. Get Profiles (Pagination needed here too if > 1000!)
-    let profiles: any[] = [];
+    // 1. Get Experience Data for primary jobs
+    let allExps: any[] = [];
     let page = 0;
     const pageSize = 1000;
     let hasMore = true;
+    while (hasMore && page < 50) {
+        const { data, error } = await client.from("candidate_experiences").select("*").range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) break;
+        if (data && data.length > 0) {
+            allExps = allExps.concat(data);
+            page++;
+            if (data.length < pageSize) hasMore = false;
+        } else { hasMore = false; }
+    }
 
+    const groupedExps: Record<string, any[]> = {};
+    allExps.forEach((exp: any) => {
+        if (!groupedExps[exp.candidate_id]) groupedExps[exp.candidate_id] = [];
+        groupedExps[exp.candidate_id].push(exp);
+    });
+
+    const expMap: Record<string, any> = {};
+    Object.keys(groupedExps).forEach(cid => {
+        const primary = getPrimaryJob(groupedExps[cid]);
+        if (primary) expMap[cid] = primary;
+    });
+
+    // 2. Get Profiles with salary data
+    let profiles: any[] = [];
+    page = 0;
+    hasMore = true;
     while (hasMore && page < 50) {
         const { data, error } = await client
             .from("Candidate Profile")
@@ -225,9 +260,7 @@ export async function getMarketSalaryStats() {
             profiles = profiles.concat(data);
             page++;
             if (data.length < pageSize) hasMore = false;
-        } else {
-            hasMore = false;
-        }
+        } else { hasMore = false; }
     }
 
     if (!profiles || profiles.length === 0) return { companyStats: [], details: [], filterOptions: { industries: [], groups: [], companies: [] } };
@@ -235,7 +268,6 @@ export async function getMarketSalaryStats() {
     const companyAgg: Record<string, { salaries: number[], industry: string, group: string }> = {};
     const details: any[] = [];
 
-    // Filters
     const industries = new Set<string>();
     const groups = new Set<string>();
     const companies = new Set<string>();

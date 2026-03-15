@@ -18,7 +18,9 @@ import { cn } from "@/lib/utils";
 interface CreateJobRequisitionFormProps {
     onCancel: () => void;
     onSuccess: (updatedJR: any) => void;
-    initialData?: any; // [NEW] For Edit Mode
+    initialData?: any;
+    selectedCreatedBy?: string;
+    profiles?: { email: string; real_name: string }[];
 }
 
 interface ComboboxProps {
@@ -83,7 +85,7 @@ function CreatableCombobox({ value, onChange, options, placeholder, allowCustom 
     );
 }
 
-export function CreateJobRequisitionForm({ onCancel, onSuccess, initialData }: CreateJobRequisitionFormProps) {
+export function CreateJobRequisitionForm({ onCancel, onSuccess, initialData, selectedCreatedBy, profiles }: CreateJobRequisitionFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const isEdit = !!initialData;
 
@@ -140,7 +142,7 @@ export function CreateJobRequisitionForm({ onCancel, onSuccess, initialData }: C
 
                 setCurrentUserName(name);
                 if (!isEdit) {
-                    setFormData(prev => ({ ...prev, create_by: name }));
+                    setFormData(prev => ({ ...prev, create_by: selectedCreatedBy || name }));
                 }
             } catch (e) {
                 console.error("Failed to load options", e);
@@ -282,19 +284,24 @@ export function CreateJobRequisitionForm({ onCancel, onSuccess, initialData }: C
                     </div>
                 )}
 
-                {/* Create By - REMOVED from UI but kept in state for action */}
-                {/* <div className="space-y-2">
+                {/* Create By */}
+                <div className="space-y-2">
                     <Label htmlFor="create_by">Create By <span className="text-red-500">*</span></Label>
-                    <Select onValueChange={(v) => handleChange("create_by", v)} defaultValue={formData.create_by}>
-                        <SelectTrigger>
+                    <Select onValueChange={(v) => handleChange("create_by", v)} value={formData.create_by}>
+                        <SelectTrigger className="bg-white border-slate-200">
                             <SelectValue placeholder="Select Creator" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="Admin">Admin</SelectItem>
-                            <SelectItem value="HR Manager">HR Manager</SelectItem>
+                            {(profiles || []).map((p, idx) => (
+                                <SelectItem key={`${p.email}-${idx}`} value={p.real_name}>{p.real_name}</SelectItem>
+                            ))}
+                            {/* Fallback if profiles not loaded yet or empty */}
+                            {(!profiles || profiles.length === 0) && (
+                                <SelectItem value={formData.create_by}>{formData.create_by}</SelectItem>
+                            )}
                         </SelectContent>
                     </Select>
-                </div> */}
+                </div>
 
                 {/* Feedback File (PDF Link) */}
                 <div className="space-y-2">
@@ -322,7 +329,7 @@ export function CreateJobRequisitionForm({ onCancel, onSuccess, initialData }: C
             <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex flex-col">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Created By</span>
-                    <span className="text-sm font-black text-indigo-600">{currentUserName || "Loading..."}</span>
+                    <span className="text-sm font-black text-indigo-600">{formData.create_by || "System"}</span>
                 </div>
                 <div className="flex gap-3">
                     <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { RawOrgNode, updateOrgNode, createOrgNode, searchCandidates } from '@/app/actions/org-chart-actions'
+import { RawOrgNode, updateOrgNode, createOrgNode, searchCandidates, createSingleOrgProfile } from '@/app/actions/org-chart-actions'
 import {
     Table,
     TableBody,
@@ -21,7 +21,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { Edit2, Plus, UserCheck, AlertCircle, Search, X, Loader2 } from 'lucide-react'
+import { Edit2, Plus, UserCheck, AlertCircle, Search, X, Loader2, UserPlus } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
 
@@ -29,6 +29,7 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
     const [editingNode, setEditingNode] = useState<RawOrgNode | null>(null)
     const [isAddMode, setIsAddMode] = useState(false)
     const [isOpen, setIsOpen] = useState(false)
+    const [creatingIds, setCreatingIds] = useState<Set<string>>(new Set())
 
     // Search State
     const [searchQuery, setSearchQuery] = useState('')
@@ -41,7 +42,8 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
         title: '',
         parent_name: '',
         matched_candidate_id: '',
-        matched_candidate_name: '' // For display
+        matched_candidate_name: '', // For display
+        linkedin: ''
     })
 
     const handleEdit = (node: RawOrgNode) => {
@@ -52,7 +54,8 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
             title: node.title || '',
             parent_name: node.parent_name || '',
             matched_candidate_id: node.matched_candidate_id || '',
-            matched_candidate_name: node.candidate ? `${node.candidate.first_name} ${node.candidate.last_name}` : ''
+            matched_candidate_name: node.candidate ? (node.candidate.name || '') : '',
+            linkedin: node.linkedin || ''
         })
         setSearchQuery('')
         setSearchResults([])
@@ -71,7 +74,8 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
             title: '',
             parent_name: '',
             matched_candidate_id: '',
-            matched_candidate_name: ''
+            matched_candidate_name: '',
+            linkedin: ''
         })
         setSearchQuery('')
         setSearchResults([])
@@ -86,7 +90,8 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
                 name: formData.name,
                 title: formData.title,
                 parent_name: formData.parent_name,
-                matched_candidate_id: formData.matched_candidate_id || null
+                matched_candidate_id: formData.matched_candidate_id || null,
+                linkedin: formData.linkedin || null
             }
 
             if (isAddMode) {
@@ -100,6 +105,27 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
         } catch (error) {
             console.error(error)
             toast.error(isAddMode ? "Failed to add employee" : "Failed to update node")
+        }
+    }
+
+    const handleSingleCreate = async (nodeId: string) => {
+        try {
+            setCreatingIds(prev => new Set(prev).add(nodeId))
+            const res = await createSingleOrgProfile(nodeId)
+            if (res.mode === 'n8n') {
+                toast.success("Profile created! Webhook sent to n8n for experience retrieval.")
+            } else {
+                toast.success("Profile and Current Job experience created successfully.")
+            }
+        } catch (error) {
+            console.error(error)
+            toast.error("Profile creation failed.")
+        } finally {
+            setCreatingIds(prev => {
+                const next = new Set(prev)
+                next.delete(nodeId)
+                return next
+            })
         }
     }
 
@@ -208,9 +234,27 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
                                     )}
                                 </TableCell>
                                 <TableCell className='text-right'>
-                                    <Button variant="ghost" size="icon" onClick={() => handleEdit(node)} className="hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/10">
-                                        <Edit2 className="h-4 w-4" />
-                                    </Button>
+                                    <div className="flex justify-end items-center gap-2">
+                                        {!node.matched_candidate_id && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 text-[10px] gap-1 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                                                onClick={() => handleSingleCreate(node.node_id)}
+                                                disabled={creatingIds.has(node.node_id)}
+                                            >
+                                                {creatingIds.has(node.node_id) ? (
+                                                    <Loader2 size={12} className="animate-spin" />
+                                                ) : (
+                                                    <UserPlus size={12} />
+                                                )}
+                                                Create Profile
+                                            </Button>
+                                        )}
+                                        <Button variant="ghost" size="icon" onClick={() => handleEdit(node)} className="h-8 w-8 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/10">
+                                            <Edit2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -253,6 +297,20 @@ export function OrgNodeTable({ nodes, uploadId }: { nodes: RawOrgNode[], uploadI
                                 onChange={(e) => setFormData({ ...formData, parent_name: e.target.value })}
                                 placeholder="Exact name of the manager node"
                             />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="node-linkedin" className="flex items-center gap-2">
+                                <Search size={14} /> Profile LinkedIn (Independent)
+                            </Label>
+                            <Input
+                                id="node-linkedin"
+                                value={formData.linkedin}
+                                onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
+                                placeholder="https://www.linkedin.com/in/..."
+                            />
+                            <p className="text-[10px] text-slate-500 italic">
+                                Fill this if there is no matched candidate profile, but you still want to show a LinkedIn icon.
+                            </p>
                         </div>
 
                         <div className="space-y-2 border-t pt-4">

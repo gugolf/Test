@@ -86,6 +86,7 @@ export async function addActivityLog(jrCandidateId: string, status: string, note
                 jr_candidate_id: jrCandidateId,
                 status,
                 updated_By: updatedBy,
+                updated_by: updatedBy,
                 timestamp: timestampStr,
                 note
             } as any);
@@ -98,17 +99,23 @@ export async function addActivityLog(jrCandidateId: string, status: string, note
     }
 }
 
-export async function updateActivityLog(logId: number, status: string, note: string | null = null) {
+export async function updateActivityLog(logId: number, status: string, note: string | null = null, updatedBy?: string) {
     const supabase = adminAuthClient;
 
     try {
-        const { error } = await supabase
+        const updates: any = {
+            status,
+            note,
+        };
+
+        if (updatedBy) {
+            updates.updated_By = updatedBy;
+            updates.updated_by = updatedBy;
+        }
+
+        const { error } = await (supabase as any)
             .from('status_log')
-            .update({
-                status,
-                note,
-                // We keep original timestamp or could add updated_at if schema supports it
-            } as any)
+            .update(updates)
             .eq('log_id', logId);
 
         if (error) throw error;

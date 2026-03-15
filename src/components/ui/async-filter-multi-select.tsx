@@ -175,11 +175,11 @@ export function AsyncFilterMultiSelect({
                                     </div>
                                 )}
                                 <CommandGroup heading={query ? "Search Results" : "Recent / Suggested"}>
-                                    {options.map((option) => {
+                                    {options.map((option, idx) => {
                                         const isSelected = tempSelected.includes(option);
                                         return (
                                             <CommandItem
-                                                key={option}
+                                                key={`${option}-${idx}`}
                                                 value={option}
                                                 onSelect={() => handleToggle(option)}
                                             >
@@ -212,11 +212,11 @@ export function AsyncFilterMultiSelect({
                         {tempSelected.length > 0 && (
                             <div className="border-t pt-1 mt-1">
                                 <CommandGroup heading="Selected Current">
-                                    {tempSelected.map((item) => {
+                                    {tempSelected.map((item, idx) => {
                                         if (options.includes(item)) return null;
                                         return (
                                             <CommandItem
-                                                key={item}
+                                                key={`${item}-${idx}`}
                                                 value={item}
                                                 onSelect={() => handleToggle(item)}
                                             >

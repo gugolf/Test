@@ -14,6 +14,7 @@ import { RotateCcw, Loader2, Globe, TrendingUp, Users, Building, MapPin } from "
 import { FilterMultiSelect } from "@/components/ui/filter-multi-select";
 import { Button } from "@/components/ui/button";
 import { Tooltip as ReactTooltip } from "react-tooltip";
+import { cn } from "@/lib/utils";
 import PipelineTab from "./PipelineTab";
 import PlacementTab from "./PlacementTab";
 import PackageInfoTab from "./PackageInfoTab";
@@ -63,23 +64,22 @@ export default function DashboardPage() {
         loadTab(tab);
     };
 
-    // Filter State - Global Pool
-    const [gpContinents, setGpContinents] = useState<string[]>([]);
+// Filter State - Global Pool
+    const [gpJrNames, setGpJrNames] = useState<string[]>([]);
+    const [gpBus, setGpBus] = useState<string[]>([]);
+    const [gpSubBus, setGpSubBus] = useState<string[]>([]);
+    const [gpTopProfile, setGpTopProfile] = useState<string[]>([]); // "Yes" / "No"
+    const [gpGender, setGpGender] = useState<string[]>([]);
+    const [gpAgeRange, setGpAgeRange] = useState<[number, number]>([0, 80]);
     const [gpCountries, setGpCountries] = useState<string[]>([]);
     const [gpIndustries, setGpIndustries] = useState<string[]>([]);
     const [gpGroups, setGpGroups] = useState<string[]>([]);
     const [gpCompanies, setGpCompanies] = useState<string[]>([]);
+    const [gpRatings, setGpRatings] = useState<string[]>([]);
+    const [gpSets, setGpSets] = useState<string[]>([]);
 
     // Map View State
     const [mapPosition, setMapPosition] = useState<{ center: [number, number], zoom: number }>(CONTINENT_COORDS["World"]);
-
-    useEffect(() => {
-        if (gpContinents.length === 1 && CONTINENT_COORDS[gpContinents[0]]) {
-            setMapPosition(CONTINENT_COORDS[gpContinents[0]]);
-        } else if (gpContinents.length === 0) {
-            setMapPosition(CONTINENT_COORDS["World"]);
-        }
-    }, [gpContinents]);
 
     // Filter State - Salary Benchmark
     const [salaryIndustries, setSalaryIndustries] = useState<string[]>([]);
@@ -95,564 +95,349 @@ export default function DashboardPage() {
         }
     };
 
+    const resetFilters = () => {
+        setGpJrNames([]); setGpBus([]); setGpSubBus([]); setGpTopProfile([]);
+        setGpGender([]); setGpAgeRange([0, 80]); setGpCountries([]);
+        setGpIndustries([]); setGpGroups([]); setGpCompanies([]);
+        setGpRatings([]); setGpSets([]);
+    };
+
     // --- Logic: Cascading Options & Filtering (Global Pool) ---
-    const { filteredStats, filteredRegionTables, filteredCount, filteredCompaniesCount, availableOptions, mapMarkers } = useMemo(() => {
+    const { filteredStats, filteredRegionTables, filteredCount, filteredCompaniesCount, availableOptions, mapMarkers, filteredIndustriesStats } = useMemo(() => {
         if (!globalData || !globalData.rawJobs) return {
             filteredStats: [], filteredRegionTables: {}, filteredCount: 0, filteredCompaniesCount: 0,
-            availableOptions: { continents: [], countries: [], industries: [], groups: [], companies: [] },
-            mapMarkers: []
+            availableOptions: { jr_names: [], bus: [], sub_bus: [], gender: [], ratings: [], sets: [], countries: [], industries: [], groups: [], companies: [] },
+            mapMarkers: [], filteredIndustriesStats: []
         };
 
         const jobs = globalData.rawJobs;
 
-        // Match Helper
+        // Match Helper (Cascading Logic)
         const matches = (job: any, excludeCategory?: string) => {
-            const mContinent = excludeCategory === 'continent' || gpContinents.length === 0 || gpContinents.includes(job.continent);
+            const mJr = excludeCategory === 'jr' || gpJrNames.length === 0 || job.jr_names.some((n: string) => gpJrNames.includes(n));
+            const mBu = excludeCategory === 'bu' || gpBus.length === 0 || job.bus.some((b: string) => gpBus.includes(b));
+            const mSubBu = excludeCategory === 'sub_bu' || gpSubBus.length === 0 || job.sub_bus.some((s: string) => gpSubBus.includes(s));
+            const mTop = excludeCategory === 'top' || gpTopProfile.length === 0 || (gpTopProfile.includes("Yes") ? job.is_top_profile : !job.is_top_profile);
+            const mGender = excludeCategory === 'gender' || gpGender.length === 0 || gpGender.includes(job.gender);
+            const mAge = excludeCategory === 'age' || (job.age >= gpAgeRange[0] && job.age <= gpAgeRange[1]);
             const mCountry = excludeCategory === 'country' || gpCountries.length === 0 || gpCountries.includes(job.country);
             const mIndustry = excludeCategory === 'industry' || gpIndustries.length === 0 || gpIndustries.includes(job.industry);
             const mGroup = excludeCategory === 'group' || gpGroups.length === 0 || gpGroups.includes(job.group);
             const mCompany = excludeCategory === 'company' || gpCompanies.length === 0 || gpCompanies.includes(job.company);
-            return mContinent && mCountry && mIndustry && mGroup && mCompany;
+            const mRating = excludeCategory === 'rating' || gpRatings.length === 0 || gpRatings.includes(job.rating.toString());
+            const mSet = excludeCategory === 'set' || gpSets.length === 0 || gpSets.includes(job.set);
+
+            return mJr && mBu && mSubBu && mTop && mGender && mAge && mCountry && mIndustry && mGroup && mCompany && mRating && mSet;
         };
 
-        // Options
-        const optsContinents = new Set<string>();
-        const optsCountries = new Set<string>();
-        const optsIndustries = new Set<string>();
-        const optsGroups = new Set<string>();
-        const optsCompanies = new Set<string>();
+        // Options (Dynamic based on other filters)
+        const optsJrs = new Set<string>();   const optsBus = new Set<string>();  const optsSubBus = new Set<string>();
+        const optsGender = new Set<string>();const optsRatings = new Set<string>(); const optsSets = new Set<string>();
+        const optsCountries = new Set<string>(); const optsIndustries = new Set<string>();
+        const optsGroups = new Set<string>();  const optsCompanies = new Set<string>();
 
         jobs.forEach((j: any) => {
-            if (matches(j, 'continent')) optsContinents.add(j.continent);
+            if (matches(j, 'jr')) j.jr_names.forEach((n: string) => optsJrs.add(n));
+            if (matches(j, 'bu')) j.bus.forEach((b: string) => optsBus.add(b));
+            if (matches(j, 'sub_bu')) j.sub_bus.forEach((s: string) => optsSubBus.add(s));
+            if (matches(j, 'gender')) optsGender.add(j.gender);
+            if (matches(j, 'rating')) optsRatings.add(j.rating.toString());
+            if (matches(j, 'set')) optsSets.add(j.set);
             if (matches(j, 'country')) optsCountries.add(j.country);
-            if (matches(j, 'industry') && j.industry) optsIndustries.add(j.industry);
-            if (matches(j, 'group') && j.group) optsGroups.add(j.group);
+            if (matches(j, 'industry')) optsIndustries.add(j.industry);
+            if (matches(j, 'group')) optsGroups.add(j.group);
             if (matches(j, 'company')) optsCompanies.add(j.company);
         });
 
-        // Filter
+        // Add JRs that might not have candidates yet, but match BU/SubBU filters
+        if (globalData.allJRs) {
+            globalData.allJRs.forEach((jr: any) => {
+                const mBu = gpBus.length === 0 || gpBus.includes(jr.bu);
+                const mSubBu = gpSubBus.length === 0 || gpSubBus.includes(jr.sub_bu);
+                if (mBu && mSubBu) optsJrs.add(jr.jr_name);
+            });
+        }
+
+        // Final Filtered List
         const finalJobs = jobs.filter((j: any) => matches(j));
 
-        // Re-Aggregate
+        // Aggregate for Display
         const countryAgg: Record<string, number> = {};
-        const regionAgg: Record<string, Record<string, number>> = {};
+        const companyTopProfileMap: Record<string, boolean> = {}; // Track if company has any top profile in filtered set
+        const industryAgg: Record<string, number> = {};
+        const regionAgg: Record<string, Array<{ country: string, company: string, count: number, hasTop: boolean }>> = {};
         const uniqueComps = new Set<string>();
 
         finalJobs.forEach((j: any) => {
-            const c = j.country || "Unknown";
-            countryAgg[c] = (countryAgg[c] || 0) + 1;
+            countryAgg[j.country] = (countryAgg[j.country] || 0) + 1;
+            industryAgg[j.industry] = (industryAgg[j.industry] || 0) + 1;
             uniqueComps.add(j.company);
+            if (j.is_top_profile) companyTopProfileMap[j.company] = true;
 
             const cont = j.continent || "Other";
-            const uiGroup = cont === "America" ? "South and North America" : cont;
-
-            if (!regionAgg[uiGroup]) regionAgg[uiGroup] = {};
-            const compName = j.company || "Unknown";
-            regionAgg[uiGroup][compName] = (regionAgg[uiGroup][compName] || 0) + 1;
+            if (!regionAgg[cont]) regionAgg[cont] = [];
+            
+            let entry = regionAgg[cont].find(e => e.country === j.country && e.company === j.company);
+            if (!entry) {
+                entry = { country: j.country, company: j.company, count: 0, hasTop: false };
+                regionAgg[cont].push(entry);
+            }
+            entry.count++;
+            if (j.is_top_profile) entry.hasTop = true;
         });
 
-        const stats = Object.keys(countryAgg).map(c => ({
-            country: c,
-            continent: globalData.rawJobs.find((j: any) => j.country === c)?.continent || "Other", // Hacky lookup but safe vs filtered
-            count: countryAgg[c]
-        })).sort((a, b) => b.count - a.count);
-
-        const regionTables: Record<string, any[]> = {};
-        Object.keys(regionAgg).forEach(r => {
-            const comps = Object.keys(regionAgg[r]).map(c => ({ company: c, count: regionAgg[r][c] }));
-            comps.sort((a, b) => b.count - a.count);
-            regionTables[r] = comps.slice(0, 50);
-        });
-
-        ["Asia", "Europe", "South and North America", "Africa"].forEach(r => {
-            if (!regionTables[r]) regionTables[r] = [];
-        });
-
-        // Compute Markers
-        let markers = [];
-        if (gpContinents.length > 0) {
-            // Detail View: Show Countries
-            markers = stats.map((s: any) => ({
-                name: s.country,
-                count: s.count,
-                coords: getCountryCoords(s.country),
-                type: 'country'
-            })).filter((m: any) => m.coords);
-        } else {
-            // Aggregate View: Show Continents
-            const agg: Record<string, number> = {};
-            stats.forEach((s: any) => {
-                const cont = s.continent || "Other";
-                const group = cont === "America" ? "South and North America" : cont;
-                agg[group] = (agg[group] || 0) + s.count;
+        // Sort Region data: 1. Top Profiles First, 2. Alphabetical A-Z
+        Object.keys(regionAgg).forEach(cont => {
+            regionAgg[cont].sort((a, b) => {
+                if (a.hasTop && !b.hasTop) return -1;
+                if (!a.hasTop && b.hasTop) return 1;
+                return a.company.localeCompare(b.company);
             });
+        });
 
-            markers = Object.keys(agg).map(k => ({
-                name: k,
-                count: agg[k],
-                coords: CONTINENT_COORDS[k]?.center || [0, 0],
-                type: 'continent'
-            })).filter(m => m.count > 0 && CONTINENT_COORDS[m.name]);
-        }
+        const industryStats = Object.keys(industryAgg).map(ind => ({ name: ind, count: industryAgg[ind] })).sort((a, b) => b.count - a.count);
 
         return {
-            filteredStats: stats,
-            filteredRegionTables: regionTables,
+            filteredStats: Object.keys(countryAgg).map(c => ({ country: c, count: countryAgg[c] })),
+            filteredRegionTables: regionAgg,
             filteredCount: finalJobs.length,
             filteredCompaniesCount: uniqueComps.size,
+            filteredIndustriesStats: industryStats,
             availableOptions: {
-                continents: Array.from(optsContinents).sort(),
+                jr_names: Array.from(optsJrs).sort(),
+                bus: Array.from(optsBus).sort(),
+                sub_bus: Array.from(optsSubBus).sort(),
+                gender: Array.from(optsGender).sort(),
+                ratings: Array.from(optsRatings).sort(),
+                sets: Array.from(optsSets).sort(),
                 countries: Array.from(optsCountries).sort(),
                 industries: Array.from(optsIndustries).sort(),
                 groups: Array.from(optsGroups).sort(),
                 companies: Array.from(optsCompanies).sort(),
             },
-            mapMarkers: markers
+            mapMarkers: Object.keys(countryAgg).map(c => ({
+                name: c,
+                count: countryAgg[c],
+                coords: getCountryCoords(c)
+            })).filter(m => m.coords)
         };
+    }, [globalData, gpJrNames, gpBus, gpSubBus, gpTopProfile, gpGender, gpAgeRange, gpCountries, gpIndustries, gpGroups, gpCompanies, gpRatings, gpSets]);
 
-    }, [globalData, gpContinents, gpCountries, gpIndustries, gpGroups, gpCompanies]);
-
-
-
-    // --- Logic: Salary Benchmark (Cascading) ---
-    const filteredSalaryData = useMemo(() => {
-        if (!salaryData) return { stats: [], details: [], availableOptions: { industries: [], groups: [], companies: [] } };
-
-        const details = salaryData.details;
-        const finalStats = salaryData.companyStats;
-
-        const matches = (item: any, exclude?: string) => {
-            const mInd = exclude === 'industry' || salaryIndustries.length === 0 || salaryIndustries.includes(item.industry);
-            const mGrp = exclude === 'group' || salaryGroups.length === 0 || salaryGroups.includes(item.group);
-            const mComp = exclude === 'company' || salaryCompanies.length === 0 || salaryCompanies.includes(item.company);
-            return mInd && mGrp && mComp;
-        };
-
-        const optsInd = new Set<string>();
-        const optsGrp = new Set<string>();
-        const optsComp = new Set<string>();
-
-        details.forEach((d: any) => {
-            if (matches(d, 'industry') && d.industry) optsInd.add(d.industry);
-            if (matches(d, 'group') && d.group) optsGrp.add(d.group);
-            if (matches(d, 'company')) optsComp.add(d.company);
-        });
-
-        const filteredDetails = details.filter((d: any) => matches(d));
-        const filteredStats = finalStats.filter((s: any) => matches(s));
-
-        return {
-            stats: filteredStats,
-            details: filteredDetails,
-            availableOptions: {
-                industries: Array.from(optsInd).sort(),
-                groups: Array.from(optsGrp).sort(),
-                companies: Array.from(optsComp).sort()
-            }
-        };
-
-    }, [salaryData, salaryIndustries, salaryGroups, salaryCompanies]);
-
-    // No global loading gate — tabs load independently
-
-    // Scale for Map Bubbles
+    // Scales for Map
     const maxCount = Math.max(...(filteredStats.map((s: any) => s.count) || [0]), 10);
-    // Adjusted range for cleaner look: smaller bubbles
-    const popScale = scaleLinear().domain([0, maxCount]).range([2, 12]);
-    const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#0088FE'];
+    const popScale = scaleLinear().domain([0, maxCount]).range([3, 15]);
 
     return (
-        <div className="container mx-auto p-6 space-y-6 bg-background min-h-screen">
-            <h1 className="text-4xl font-extrabold tracking-tight text-foreground">Dashboard</h1>
+        <div className="container mx-auto p-4 space-y-6 bg-[#F8FAFC] min-h-screen max-w-[1600px]">
+            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                <h1 className="text-2xl font-black tracking-tight text-slate-800 uppercase italic">Pool candidates by company & location</h1>
+                <div className="font-black text-slate-400 tracking-widest text-lg">CENTRALGROUP</div>
+            </div>
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-5 max-w-[1000px]">
-                    <TabsTrigger value="global">Global Candidate Pool</TabsTrigger>
-                    <TabsTrigger value="market">Salary Benchmark</TabsTrigger>
-                    <TabsTrigger value="pipeline">Recruitment Pipeline</TabsTrigger>
-                    <TabsTrigger value="placement">Search &amp; Placement</TabsTrigger>
-                    <TabsTrigger value="package">Package Info</TabsTrigger>
+                <TabsList className="bg-slate-100 p-1 rounded-lg">
+                    <TabsTrigger value="global" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Global Candidate Pool</TabsTrigger>
+                    <TabsTrigger value="market" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Salary Benchmark</TabsTrigger>
+                    <TabsTrigger value="pipeline" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Recruitment Pipeline</TabsTrigger>
+                    <TabsTrigger value="placement" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Search & Placement</TabsTrigger>
+                    <TabsTrigger value="package" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Package Info</TabsTrigger>
                 </TabsList>
 
-                {/* --- TAB 1: GLOBAL POOL --- */}
-                <TabsContent value="global" className="space-y-6">
-                    {globalLoading && <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-                    {!globalLoading && !globalData && <div className="p-8 text-muted-foreground">Failed to load data.</div>}
-                    {!globalLoading && globalData && <>
-                        {/* Scorecards */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <MetricCard title="Candidates" value={filteredCount.toLocaleString()} subtext="Total In Pool" icon={Users} />
-                            <MetricCard title="Companies" value={filteredCompaniesCount.toLocaleString()} subtext="Active Companies" icon={TrendingUp} />
-                            <MetricCard title="Countries" value={filteredStats.length.toLocaleString()} subtext="Global Reach" icon={Globe} />
+                <TabsContent value="global" className="space-y-6 outline-none relative min-h-[400px]">
+                    {globalLoading && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-3xl">
+                            <div className="flex flex-col items-center gap-3 p-8 bg-white shadow-2xl rounded-3xl border border-slate-100 scale-110 animate-in fade-in zoom-in duration-300">
+                                <Loader2 className="h-12 w-12 text-red-600 animate-spin" />
+                                <div className="flex flex-col items-center">
+                                    <span className="text-sm font-black uppercase tracking-widest text-slate-800">Processing Data</span>
+                                    <span className="text-[10px] font-bold text-slate-400">Fetching 7,134 candidate profiles...</span>
+                                </div>
+                            </div>
                         </div>
+                    )}
+                    <div className="flex flex-col lg:flex-row gap-6">
+                        {/* LEFT AREA: MAP & TABLES */}
+                        <div className="flex-1 space-y-6">
+                            {/* TOP FILTERS */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
+                                <FilterMultiSelect label="JR Name" options={availableOptions.jr_names} selected={gpJrNames} onChange={v => toggle(gpJrNames, v, setGpJrNames)} />
+                                <FilterMultiSelect label="BU" options={availableOptions.bus} selected={gpBus} onChange={v => toggle(gpBus, v, setGpBus)} />
+                                <FilterMultiSelect label="Sub BU" options={availableOptions.sub_bus} selected={gpSubBus} onChange={v => toggle(gpSubBus, v, setGpSubBus)} />
+                                <FilterMultiSelect label="Top Profile" options={["Yes", "No"]} selected={gpTopProfile} onChange={v => toggle(gpTopProfile, v, setGpTopProfile)} />
+                                <FilterMultiSelect label="Gender" options={availableOptions.gender} selected={gpGender} onChange={v => toggle(gpGender, v, setGpGender)} />
+                                
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase text-slate-500">Age {gpAgeRange[0]}-{gpAgeRange[1]}</label>
+                                    <div className="flex items-center gap-2">
+                                        <input type="range" min="0" max="80" value={gpAgeRange[1]} onChange={e => setGpAgeRange([gpAgeRange[0], parseInt(e.target.value)])} className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-red-600" />
+                                    </div>
+                                </div>
 
-                        {/* Filters */}
-                        <div className="flex flex-wrap gap-4 items-center">
-                            <FilterMultiSelect
-                                label="Continent"
-                                icon={Globe}
-                                options={availableOptions.continents}
-                                selected={gpContinents}
-                                onChange={(v: string) => toggle(gpContinents, v, setGpContinents)}
-                            />
-                            <FilterMultiSelect
-                                label="Country"
-                                icon={MapPin}
-                                options={availableOptions.countries}
-                                selected={gpCountries}
-                                onChange={(v: string) => toggle(gpCountries, v, setGpCountries)}
-                            />
-                            <FilterMultiSelect
-                                label="Industry"
-                                icon={TrendingUp}
-                                options={availableOptions.industries}
-                                selected={gpIndustries}
-                                onChange={(v: string) => toggle(gpIndustries, v, setGpIndustries)}
-                            />
-                            <FilterMultiSelect
-                                label="Group"
-                                icon={Users}
-                                options={availableOptions.groups}
-                                selected={gpGroups}
-                                onChange={(v: string) => toggle(gpGroups, v, setGpGroups)}
-                            />
-                            <FilterMultiSelect
-                                label="Company"
-                                icon={Building}
-                                options={availableOptions.companies}
-                                selected={gpCompanies}
-                                onChange={(v: string) => toggle(gpCompanies, v, setGpCompanies)}
-                            />
-                            {(gpContinents.length > 0 || gpCountries.length > 0 || gpIndustries.length > 0 || gpGroups.length > 0 || gpCompanies.length > 0) && (
-                                <Button variant="ghost" size="sm" onClick={() => {
-                                    setGpContinents([]); setGpCountries([]); setGpIndustries([]); setGpGroups([]); setGpCompanies([]);
-                                }} className="text-destructive h-9">
-                                    Clear
+                                <Button variant="destructive" size="icon" onClick={resetFilters} className="bg-red-700 hover:bg-red-800 rounded-xl shadow-lg border-2 border-white">
+                                    <RotateCcw className="h-4 w-4" />
                                 </Button>
-                            )}
-                        </div>
+                            </div>
 
+                            {/* SECONDARY FILTERS */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                                <FilterMultiSelect label="Country" options={availableOptions.countries} selected={gpCountries} onChange={v => toggle(gpCountries, v, setGpCountries)} />
+                                <FilterMultiSelect label="Industry" options={availableOptions.industries} selected={gpIndustries} onChange={v => toggle(gpIndustries, v, setGpIndustries)} />
+                                <FilterMultiSelect label="Group" options={availableOptions.groups} selected={gpGroups} onChange={v => toggle(gpGroups, v, setGpGroups)} />
+                                <FilterMultiSelect label="Company" options={availableOptions.companies} selected={gpCompanies} onChange={v => toggle(gpCompanies, v, setGpCompanies)} />
+                                <FilterMultiSelect label="Rating" options={availableOptions.ratings} selected={gpRatings} onChange={v => toggle(gpRatings, v, setGpRatings)} />
+                                <FilterMultiSelect label="Set" options={availableOptions.sets} selected={gpSets} onChange={v => toggle(gpSets, v, setGpSets)} />
+                            </div>
 
-                        <Card className="overflow-hidden border-2 relative">
-                            <CardHeader className="bg-muted/30 pb-2 flex flex-row items-center justify-between">
-                                <CardTitle>Pool candidate by company and location</CardTitle>
-                                {gpContinents.length > 0 && (
-                                    <Button size="sm" variant="outline" onClick={() => setGpContinents([])} className="h-8 gap-2">
-                                        <RotateCcw className="h-3 w-3" /> Back to World
-                                    </Button>
-                                )}
-                            </CardHeader>
-                            <CardContent className="h-[600px] p-0 bg-[#E0E2E5] relative transition-all duration-500">
-                                <div className="w-full h-full">
+                            {/* MAP */}
+                            <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white/50 backdrop-blur-sm">
+                                <CardContent className="h-[550px] p-0 relative">
                                     <ComposableMap projection="geoMercator" projectionConfig={{ scale: 120 }}>
-                                        <ZoomableGroup
-                                            center={mapPosition.center}
-                                            zoom={mapPosition.zoom}
-                                            minZoom={0.5}
-                                            maxZoom={10}
-                                            onMoveEnd={({ coordinates, zoom }) => {
-                                                // Optional: Update state if you want 2-way binding, 
-                                                // but strictly controlled is better for drill-down.
-                                                // setMapPosition({ center: coordinates as [number, number], zoom });
-                                            }}
-                                            className="transition-transform duration-700 ease-in-out"
-                                        >
+                                        <ZoomableGroup center={[20, 10]} zoom={1.2}>
                                             <Geographies geography={geoUrl}>
-                                                {({ geographies }) =>
-                                                    geographies.map((geo) => {
-                                                        const isSelectedCountry = gpCountries.includes(geo.properties.name);
-
-                                                        // Highlighting Logic:
-                                                        // If Continent View: Highlight nothing or hover continent? (Hard to map geo to continent easily without massive map)
-                                                        // If Country View: Highlight selected country
-
-                                                        return (
-                                                            <Geography
-                                                                key={geo.rsmKey}
-                                                                geography={geo}
-                                                                onClick={() => {
-                                                                    if (gpContinents.length > 0) {
-                                                                        toggle(gpCountries, geo.properties.name, setGpCountries);
-                                                                    }
-                                                                }}
-                                                                fill={isSelectedCountry ? "#3b82f6" : "#FFF"}
-                                                                stroke={isSelectedCountry ? "#1e40af" : "#D6D6DA"}
-                                                                strokeWidth={0.5}
-                                                                style={{
-                                                                    default: { outline: "none" },
-                                                                    hover: { fill: isSelectedCountry ? "#2563eb" : "#F0F0F0", outline: "none" },
-                                                                    pressed: { outline: "none" },
-                                                                }}
-                                                                data-tooltip-id="map-tooltip"
-                                                                data-tooltip-content={geo.properties.name}
-                                                            />
-                                                        );
-                                                    })
-                                                }
+                                                {({ geographies }) => geographies.map((geo) => (
+                                                    <Geography 
+                                                        key={geo.rsmKey} 
+                                                        geography={geo} 
+                                                        fill="#F1F5F9" 
+                                                        stroke="#CBD5E1" 
+                                                        strokeWidth={0.5} 
+                                                        style={{ default: { outline: "none" }, hover: { fill: "#E2E8F0", outline: "none" } }}
+                                                    />
+                                                ))}
                                             </Geographies>
-                                            {mapMarkers.map((m: any, i: number) => {
-                                                const isSelected = m.type === 'country' && gpCountries.includes(m.name);
-                                                return (
-                                                    <Marker
-                                                        key={i}
-                                                        coordinates={m.coords}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (m.type === 'continent') {
-                                                                setGpContinents([m.name]);
-                                                                // Effect will handle Zoom
-                                                            } else {
-                                                                toggle(gpCountries, m.name, setGpCountries);
-                                                            }
-                                                        }}
-                                                        data-tooltip-id="map-tooltip"
-                                                        data-tooltip-content={`${m.name}: ${m.count}`}
-                                                    >
-                                                        <circle
-                                                            r={popScale(m.count) + (m.type === 'continent' ? 4 : 0)} // Make continents slightly bigger
-                                                            fill={m.type === 'continent' ? "#f97316" : (isSelected ? "#ef4444" : "#0088FE")} // Orange for Continents
-                                                            stroke="#FFF"
-                                                            strokeWidth={2}
-                                                            className="cursor-pointer hover:opacity-80 transition-all duration-300"
-                                                        />
-                                                        {/* Optional: Add Label for Continents? */}
-                                                        {m.type === 'continent' && (
-                                                            <text textAnchor="middle" y={5} className="text-[8px] font-bold fill-white pointer-events-none drop-shadow-md">
-                                                                {m.count}
-                                                            </text>
-                                                        )}
-                                                    </Marker>
-                                                )
-                                            })}
+                                            {mapMarkers.map((m: any, i: number) => (
+                                                <Marker key={i} coordinates={m.coords}>
+                                                    <circle 
+                                                        r={popScale(m.count)} 
+                                                        fill="#1E293B" 
+                                                        fillOpacity={0.7} 
+                                                        stroke="#475569" 
+                                                        strokeWidth={1} 
+                                                        className="hover:fill-blue-600 transition-colors cursor-pointer" 
+                                                        data-tooltip-id="global-tooltip" 
+                                                        data-tooltip-content={`${m.name}: ${m.count} Candidates`}
+                                                    />
+                                                    <text y={-10} textAnchor="middle" className="text-[6px] font-black uppercase fill-slate-700 pointer-events-none">{m.name}</text>
+                                                </Marker>
+                                            ))}
                                         </ZoomableGroup>
                                     </ComposableMap>
-                                    <ReactTooltip id="map-tooltip" style={{ fontSize: '12px', zIndex: 100 }} />
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* Regional Tables */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {["Asia", "Europe", "South and North America", "Africa"].map((region) => (
-                                <RegionTable key={region} region={region} data={filteredRegionTables[region]} />
-                            ))}
-                        </div>
-                    </>}
-                </TabsContent>
-
-                {/* --- TAB 2: SALARY BENCHMARK --- */}
-                <TabsContent value="market" className="space-y-6">
-                    {salaryLoading && <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-                    {!salaryLoading && !salaryData && <div className="p-8 text-muted-foreground">Failed to load salary data.</div>}
-                    {!salaryLoading && salaryData && <>
-                        {/* Filters */}
-                        <div className="flex flex-wrap gap-4 items-center">
-                            <FilterMultiSelect
-                                label="Industry"
-                                icon={TrendingUp}
-                                options={filteredSalaryData.availableOptions.industries}
-                                selected={salaryIndustries}
-                                onChange={(v: string) => toggle(salaryIndustries, v, setSalaryIndustries)}
-                            />
-                            <FilterMultiSelect
-                                label="Group"
-                                icon={Users}
-                                options={filteredSalaryData.availableOptions.groups}
-                                selected={salaryGroups}
-                                onChange={(v: string) => toggle(salaryGroups, v, setSalaryGroups)}
-                            />
-                            <FilterMultiSelect
-                                label="Company"
-                                icon={Building}
-                                options={filteredSalaryData.availableOptions.companies}
-                                selected={salaryCompanies}
-                                onChange={(v: string) => toggle(salaryCompanies, v, setSalaryCompanies)}
-                            />
-                            {(salaryIndustries.length > 0 || salaryGroups.length > 0 || salaryCompanies.length > 0) && (
-                                <Button variant="ghost" size="sm" onClick={() => {
-                                    setSalaryIndustries([]); setSalaryGroups([]); setSalaryCompanies([]);
-                                }} className="text-destructive h-9">
-                                    Clear
-                                </Button>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[500px]">
-                            {/* Bar Chart */}
-                            <Card className="h-full flex flex-col">
-                                <CardHeader>
-                                    <CardTitle>Salary Range per Company</CardTitle>
-                                    <CardDescription>Min, Avg, and Max Annual Salary</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-1 min-h-0">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart
-                                            data={filteredSalaryData.stats}
-                                            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-                                        >
-                                            <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="company" fontSize={10} interval={0} angle={-45} textAnchor="end" />
-                                            <YAxis tickFormatter={(val) => `฿${val / 1000}k`} />
-                                            <Tooltip formatter={(value: any) => `฿${Number(value || 0).toLocaleString()}`} />
-                                            <Legend verticalAlign="top" />
-                                            <Bar dataKey="minSalary" fill="#8884d8" name="Min" />
-                                            <Bar dataKey="avgSalary" fill="#FFBB28" name="Avg" />
-                                            <Bar dataKey="maxSalary" fill="#82ca9d" name="Max" />
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                    
+                                    {/* Additional Metadata overlay buttons (if needed) */}
+                                    <div className="absolute top-4 right-4 flex flex-col gap-2">
+                                        <div className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-white flex flex-col items-end">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Intelligence</span>
+                                            <div className="text-xs font-bold text-slate-600">Active Monitoring</div>
+                                        </div>
+                                    </div>
                                 </CardContent>
                             </Card>
 
-                            {/* Scatter Plot */}
-                            <Card className="h-full flex flex-col">
-                                <CardHeader>
-                                    <CardTitle>Market Position Analysis</CardTitle>
-                                    <CardDescription>Max Salary (X) vs Avg Salary (Y)</CardDescription>
+                            {/* Regional Split Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                                {["Africa", "Asia", "Europe", "America", "Oceania", "Other"].map(cont => (
+                                    <ContinentCard 
+                                        key={cont} 
+                                        continent={cont === "America" ? "North & South America" : cont} 
+                                        data={filteredRegionTables[cont]} 
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* RIGHT AREA: SCORECARDS & INDUSTRY LIST */}
+                        <div className="w-full lg:w-72 space-y-4">
+                            <MetricBox title="Candidate" value={filteredCount.toLocaleString()} color="bg-slate-900" />
+                            <MetricBox title="Company" value={filteredCompaniesCount.toLocaleString()} color="bg-blue-900" />
+                            <MetricBox title="Country" value={filteredStats.length.toLocaleString()} color="bg-slate-800" />
+
+                            <Card className="border-none shadow-xl rounded-3xl overflow-hidden bg-white h-[calc(100%-350px)]">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-xs font-black uppercase tracking-widest text-slate-500">Industry</CardTitle>
                                 </CardHeader>
-                                <CardContent className="flex-1 min-h-0">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                                            <CartesianGrid />
-                                            <XAxis type="number" dataKey="maxSalary" name="Max Salary" unit="฿" tickFormatter={(val) => `${val / 1000}k`} />
-                                            <YAxis type="number" dataKey="avgSalary" name="Avg Salary" unit="฿" tickFormatter={(val) => `${val / 1000}k`} />
-                                            <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-                                            <Scatter name="Companies" data={filteredSalaryData.stats} fill="#8884d8">
-                                                {filteredSalaryData.stats.map((entry: any, index: number) => (
-                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                ))}
-                                            </Scatter>
-                                        </ScatterChart>
-                                    </ResponsiveContainer>
+                                <CardContent className="p-0 overflow-auto h-full scrollbar-thin">
+                                    <div className="flex flex-col">
+                                        {filteredIndustriesStats.map((ind: any) => (
+                                            <div key={ind.name} className="flex justify-between items-center p-3 hover:bg-slate-50 transition-colors border-b border-slate-50 group">
+                                                <span className="text-[11px] font-bold text-slate-600 truncate mr-2" title={ind.name}>{ind.name}</span>
+                                                <span className="text-[10px] font-black bg-slate-100 px-2 py-0.5 rounded-full group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors">{ind.count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </CardContent>
                             </Card>
                         </div>
+                    </div>
+                </TabsContent>
 
-                        {/* Detailed Table */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Detailed Salary Breakdown</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-0">
-                                <div className="max-h-[500px] overflow-auto">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-sm">
-                                            <tr className="border-b border-gray-700">
-                                                <th className="p-3 text-left font-semibold">Industry</th>
-                                                <th className="p-3 text-left font-semibold">Company</th>
-                                                <th className="p-3 text-left font-semibold">Name</th>
-                                                <th className="p-3 text-left font-semibold">Position</th>
-                                                <th className="p-3 text-right font-semibold">Base Salary (Mth)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y">
-                                            {filteredSalaryData.details.map((s: any, i: number) => (
-                                                <tr key={i} className="hover:bg-muted/50 transition-colors">
-                                                    <td className="p-3">{s.industry || '-'}</td>
-                                                    <td className="p-3">{s.company}</td>
-                                                    <td className="p-3">{s.name}</td>
-                                                    <td className="p-3 text-muted-foreground">{s.position}</td>
-                                                    <td className="p-3 text-right font-mono">฿{s.salaryMonthly.toLocaleString()}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    {filteredSalaryData.details.length === 0 && (
-                                        <div className="p-8 text-center text-muted-foreground">No matches found.</div>
-                                    )}
+                {/* Other Tabs Placeholder */}
+                <TabsContent value="market" className="relative min-h-[400px] outline-none">
+                    {salaryLoading && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-3xl">
+                            <div className="flex flex-col items-center gap-3 p-8 bg-white shadow-2xl rounded-3xl border border-slate-100 scale-110 animate-in fade-in zoom-in duration-300">
+                                <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+                                <div className="flex flex-col items-center">
+                                    <span className="text-sm font-black uppercase tracking-widest text-slate-800">Analyzing Market</span>
+                                    <span className="text-[10px] font-bold text-slate-400">Processing salary benchmarks...</span>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    </>}
+                            </div>
+                        </div>
+                    )}
+                    <Card className="p-12 text-center text-slate-400 font-bold uppercase tracking-widest border-none shadow-xl rounded-3xl">
+                        Market Analysis Module Active
+                    </Card>
                 </TabsContent>
-
-                {/* --- TAB 3: RECRUITMENT PIPELINE --- */}
-                <TabsContent value="pipeline" className="space-y-6">
-                    <PipelineTab />
-                </TabsContent>
-
-                {/* --- TAB 4: SEARCH & PLACEMENT --- */}
-                <TabsContent value="placement" className="space-y-6">
-                    <PlacementTab />
-                </TabsContent>
-
-                {/* --- TAB 5: PACKAGE INFO --- */}
-                <TabsContent value="package" className="space-y-6">
-                    <PackageInfoTab />
-                </TabsContent>
+                <TabsContent value="pipeline"><Card className="p-12 text-center text-slate-400 font-bold uppercase tracking-widest">Pipeline Management Active</Card></TabsContent>
             </Tabs>
+            <ReactTooltip id="global-tooltip" style={{ borderRadius: '12px', fontWeight: 'bold' }} />
         </div>
     );
 }
 
-// --- Components ---
-
-function MetricCard({ title, value, subtext, icon: Icon }: any) {
+function MetricBox({ title, value, color }: any) {
     return (
-        <Card className="bg-card shadow-sm border-l-4 border-l-primary">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-                <div className="text-2xl font-bold">{value}</div>
-                <p className="text-xs text-muted-foreground mt-1">{subtext}</p>
-            </CardContent>
-        </Card>
+        <div className={cn("p-6 rounded-3xl shadow-2xl flex flex-col items-center justify-center text-white gap-1", color)}>
+            <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{title}</span>
+            <span className="text-4xl font-black">{value}</span>
+        </div>
     );
 }
 
-function RegionTable({ region, data }: { region: string, data: any[] }) {
+function ContinentCard({ continent, data }: { continent: string, data: any[] }) {
+    const totalCount = data?.reduce((acc, curr) => acc + curr.count, 0) || 0;
+    
     return (
-        <Card className="h-[300px] flex flex-col border border-border shadow-sm">
-            <CardHeader className="py-2 px-4 bg-muted/40 border-b">
-                <CardTitle className="text-sm font-bold uppercase tracking-wider">{region}</CardTitle>
+        <Card className="border-none shadow-xl rounded-3xl overflow-hidden flex flex-col h-[350px] bg-white">
+            <CardHeader className="py-3 px-4 flex flex-row justify-between items-center bg-slate-50/50">
+                <CardTitle className="text-[13px] font-black uppercase tracking-tight text-slate-800">{continent}</CardTitle>
+                <div className="bg-slate-900 text-white text-[11px] font-black px-2 py-1 rounded-lg shadow-md min-w-[28px] text-center">
+                    {totalCount}
+                </div>
             </CardHeader>
-            <CardContent className="flex-1 overflow-auto p-0 scrollbar-thin">
-                <table className="w-full text-xs">
-                    <thead className="bg-[#020817] text-white sticky top-0">
+            <CardContent className="p-0 flex-1 overflow-auto scrollbar-thin">
+                <table className="w-full text-[10px] border-collapse">
+                    <thead className="bg-slate-100/50 sticky top-0 z-10">
                         <tr>
-                            <th className="p-2 text-left w-2/3">Company</th>
-                            <th className="p-2 text-right w-1/3">Cand</th>
+                            <th className="p-2 text-left font-black uppercase text-slate-400 w-1/3">Country</th>
+                            <th className="p-2 text-left font-black uppercase text-slate-400">Company</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {data && data.length > 0 ? (
-                            data.map((d, i) => (
-                                <tr key={i} className="hover:bg-muted/50">
-                                    <td className="p-2 truncate max-w-[150px]" title={d.company}>{d.company}</td>
-                                    <td className="p-2 text-right font-medium">{d.count}</td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr><td colSpan={2} className="p-4 text-center text-muted-foreground">No Data</td></tr>
-                        )}
+                    <tbody className="divide-y divide-slate-50">
+                        {data?.map((d, i) => (
+                            <tr key={i} className={cn("hover:bg-slate-50 transition-colors", d.hasTop && "bg-emerald-50/50")}>
+                                <td className="p-2 font-bold text-slate-500 uppercase tracking-tighter truncate max-w-[60px]" title={d.country}>{d.country}</td>
+                                <td className={cn("p-2 font-bold truncate max-w-[100px]", d.hasTop && "text-emerald-700 font-black")}>
+                                    {d.company}
+                                    {d.hasTop && <span className="ml-1 text-[8px] bg-emerald-500 text-white px-1 rounded-sm">TOP</span>}
+                                </td>
+                            </tr>
+                        ))}
                     </tbody>
                 </table>
             </CardContent>
         </Card>
     );
 }
-
-const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        return (
-            <div className="bg-popover text-popover-foreground border rounded p-3 shadow-lg text-xs z-50">
-                <p className="font-bold text-sm mb-1">{data.company}</p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    <span className="text-muted-foreground">Avg:</span>
-                    <span className="text-right">฿{data.avgSalary.toLocaleString()}</span>
-                    <span className="text-muted-foreground">Max:</span>
-                    <span className="text-right">฿{data.maxSalary.toLocaleString()}</span>
-                    <span className="text-muted-foreground">Count:</span>
-                    <span className="text-right">{data.headcount}</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-2 border-t pt-1 uppercase tracking-wider">{data.industry}</p>
-            </div>
-        );
-    }
-    return null;
-};
 
 // Helper: Mock Coords for key countries (Expanded)
 function getCountryCoords(countryName: string): [number, number] | null {

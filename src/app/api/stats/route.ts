@@ -17,13 +17,29 @@ export async function GET() {
 
         if (jobError) throw jobError;
 
-        const active = (jobs as any)?.filter((j: any) => j.is_active?.toLowerCase() === 'active').length || 0;
-        const inactive = (jobs?.length || 0) - active;
+        const active = (jobs as any)?.filter((j: any) => j.is_active?.toString().toLowerCase() === 'active').length || 0;
+        const total = jobs?.length || 0;
+        const inactive = total - active;
+
+        // 3. Get Resume Count
+        const { count: resumeCount } = await adminAuthClient
+            .from('Candidate Profile')
+            .select('*', { count: 'exact', head: true })
+            .not('resume_url', 'is', null)
+            .neq('resume_url', '');
+
+        // 4. Get OrgChart Count
+        const { count: orgChartCount } = await adminAuthClient
+            .from('org_chart_uploads')
+            .select('*', { count: 'exact', head: true });
 
         return NextResponse.json({
             totalCandidates: candCount || 0,
             activeJobs: active,
-            inactiveJobs: inactive
+            totalJRs: total,
+            inactiveJobs: inactive,
+            resumeCount: resumeCount || 0,
+            orgChartCount: orgChartCount || 0
         });
 
     } catch (error: any) {

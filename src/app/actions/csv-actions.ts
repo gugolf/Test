@@ -24,7 +24,7 @@ interface UploadLog {
     linkedin: string;
     status: string;
     note: string;
-    uploader_email: string;
+    uploader_email: string; // Will store real_name
     created_at?: string;
 }
 
@@ -48,7 +48,7 @@ function normalizeEmail(email: string): string {
     return email ? email.trim().toLowerCase() : "";
 }
 
-export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
+export async function processCsvUpload(rows: CsvRow[], uploaderName: string) {
     const batchId = uuidv4();
     const logs: UploadLog[] = [];
 
@@ -125,7 +125,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
         if (!linkedin.toLowerCase().includes("linkedin")) {
             status = "Found Non LinkedIn URLs";
             note = "Invalid LinkedIn URL";
-            logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderEmail });
+            logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderName });
             continue;
         }
 
@@ -142,7 +142,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
             status = "Duplicate found";
             note = `Found duplicate with ${duplicate.candidate_id}`;
             candidateId = duplicate.candidate_id;
-            logs.push({ batch_id: batchId, candidate_id: candidateId, name, linkedin, status, note, uploader_email: uploaderEmail });
+            logs.push({ batch_id: batchId, candidate_id: candidateId, name, linkedin, status, note, uploader_email: uploaderName });
             continue;
         }
 
@@ -156,7 +156,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
         if (inBatchDuplicate) {
             status = "Duplicate found";
             note = "Found duplicate in batch";
-            logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderEmail });
+            logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderName });
             continue;
         }
 
@@ -174,7 +174,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
         if (isProcessing) {
             status = "Duplicate found";
             note = "Already in processing queue (Scraping)";
-            logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderEmail });
+            logs.push({ batch_id: batchId, candidate_id: "", name, linkedin, status, note, uploader_email: uploaderName });
             continue;
         }
 
@@ -210,7 +210,8 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
                 email: item.email || null, // Insert email if available
                 checked: getCheckedStatus(item.linkedin),
                 created_date: new Date().toISOString(),
-                modify_date: new Date().toISOString()
+                modify_date: new Date().toISOString(),
+                created_by: uploaderName
             });
 
             // Add to Logs (Success)
@@ -221,7 +222,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
                 linkedin: item.linkedin,
                 status: "Scraping",
                 note: "Queued for n8n",
-                uploader_email: uploaderEmail
+                uploader_email: uploaderName
             });
         });
     }
@@ -239,7 +240,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
         // 5. Create n8n Job (Queue/Log)
         const n8nPayload = {
             batch_id: batchId,
-            requester: uploaderEmail,
+            requester: uploaderName,
             candidate_count: newCandidatesForInsert.length,
             candidates: newCandidatesForInsert.map(c => ({
                 id: c.candidate_id,
@@ -270,7 +271,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
 
                 // Add requester param regardless of method, just in case
                 if (config.method === 'GET') {
-                    url.searchParams.append("requester", uploaderEmail);
+                    url.searchParams.append("requester", uploaderName);
                 }
 
                 console.log(`Triggering CSV n8n Webhook (${config.method}):`, url.toString());
@@ -284,7 +285,7 @@ export async function processCsvUpload(rows: CsvRow[], uploaderEmail: string) {
                 if (config.method === 'POST') {
                     fetchOptions.headers = { 'Content-Type': 'application/json' };
                     // Ensure requester is in body too
-                    payloadToSend.requester = uploaderEmail;
+                    payloadToSend.requester = uploaderName;
                     fetchOptions.body = JSON.stringify(payloadToSend);
                 }
 

@@ -145,9 +145,9 @@ export function StatusSelect({ value, onChange, placeholder = "Select status..."
                                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                                     </div>
                                 )}
-                                {!loading && statuses.map((status) => (
+                                {!loading && statuses.map((status, idx) => (
                                     <CommandItem
-                                        key={status.status}
+                                        key={`${status.status}-${idx}`}
                                         value={status.status}
                                         onSelect={() => {
                                             onChange(status.status);

@@ -9,18 +9,24 @@ import {
   ChevronRight,
   UserCircle,
   BarChart3,
-  Clock
+  Clock,
+  FileText,
+  Database
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { getTrackingData, TrackingStats } from "@/app/actions/tracking";
+import OverviewAnalytics from "./OverviewAnalytics";
 
 interface Metrics {
   totalCandidates: number;
   activeJobs: number;
+  totalJRs: number;
   inactiveJobs: number;
+  resumeCount: number;
+  orgChartCount: number;
   interviewsThisWeek: number;
 }
 
@@ -29,7 +35,10 @@ export default function OverviewPage() {
   const [metrics, setMetrics] = useState<Metrics>({
     totalCandidates: 0,
     activeJobs: 0,
+    totalJRs: 0,
     inactiveJobs: 0,
+    resumeCount: 0,
+    orgChartCount: 0,
     interviewsThisWeek: 12,
   });
   const [tracking, setTracking] = useState<TrackingStats | null>(null);
@@ -51,7 +60,10 @@ export default function OverviewPage() {
         setMetrics({
           totalCandidates: data.totalCandidates || 0,
           activeJobs: data.activeJobs || 0,
+          totalJRs: data.totalJRs || 0,
           inactiveJobs: data.inactiveJobs || 0,
+          resumeCount: data.resumeCount || 0,
+          orgChartCount: data.orgChartCount || 0,
           interviewsThisWeek: 12,
         });
 
@@ -79,7 +91,7 @@ export default function OverviewPage() {
       )}
 
       {/* Premium Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-5">
         <Card className="relative overflow-hidden group border-none bg-white ring-1 ring-slate-200 shadow-xl transition-all hover:shadow-2xl">
           <CardHeader className="pb-2">
             <CardTitle className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Global Talent Pool</CardTitle>
@@ -99,15 +111,50 @@ export default function OverviewPage() {
 
         <Card className="relative overflow-hidden group border-none bg-white ring-1 ring-slate-200 shadow-xl transition-all hover:shadow-2xl">
           <CardHeader className="pb-2">
-            <CardTitle className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Open Requisitions</CardTitle>
+            <CardTitle className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Resumes in System</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-5xl font-black tracking-tighter text-slate-900">
-              {loading ? "..." : metrics.activeJobs}
+              {loading ? "..." : metrics.resumeCount.toLocaleString()}
+            </div>
+            <div className="mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+              Verified documents
+            </div>
+          </CardContent>
+          <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
+            <FileText className="w-12 h-12" />
+          </div>
+        </Card>
+
+        <Card className="relative overflow-hidden group border-none bg-white ring-1 ring-slate-200 shadow-xl transition-all hover:shadow-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[10px] font-black text-amber-500 uppercase tracking-widest">OrgChart Data</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-5xl font-black tracking-tighter text-slate-900">
+              {loading ? "..." : metrics.orgChartCount.toLocaleString()}
+            </div>
+            <div className="mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+              Structure Uploads
+            </div>
+          </CardContent>
+          <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
+            <Database className="w-12 h-12" />
+          </div>
+        </Card>
+
+        <Card className="relative overflow-hidden group border-none bg-white ring-1 ring-slate-200 shadow-xl transition-all hover:shadow-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Job Requisitions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-5xl font-black tracking-tighter text-slate-900">
+              {loading ? "..." : metrics.totalJRs.toLocaleString()}
             </div>
             <div className="mt-4 text-[10px] font-bold flex gap-3 text-slate-500 uppercase">
               <span className="text-indigo-600 font-black">{metrics.activeJobs} ACTIVE</span>
-              <span>{metrics.inactiveJobs} TOTAL INACTIVE</span>
+              <span className="opacity-40">|</span>
+              <span className="text-slate-400 font-black">{metrics.inactiveJobs} CLOSED</span>
             </div>
           </CardContent>
           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
@@ -122,7 +169,7 @@ export default function OverviewPage() {
           <CardContent>
             <div className="text-5xl font-black tracking-tighter text-slate-900">98%</div>
             <div className="mt-4 text-[10px] font-bold text-rose-500 uppercase tracking-wide">
-              All services operational
+              Operating Normally
             </div>
           </CardContent>
           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
@@ -131,8 +178,18 @@ export default function OverviewPage() {
         </Card>
       </div>
 
+      <div className="mt-6 animate-in slide-in-from-bottom-6 duration-1000 delay-300">
+          <OverviewAnalytics />
+      </div>
+
       {/* Main Insights section */}
-      <div className="grid gap-8 lg:grid-cols-5">
+      <div className="grid gap-8 lg:grid-cols-5 pt-8 border-t border-slate-100 italic">
+        <div className="lg:col-span-5 mb-2">
+            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-indigo-500" />
+                Pipeline Performance
+            </h3>
+        </div>
         <Card className="lg:col-span-3 border-none ring-1 ring-slate-200 bg-white shadow-2xl rounded-3xl overflow-hidden">
           <CardHeader className="border-b bg-slate-50 px-8 py-6">
             <div className="flex justify-between items-center">
