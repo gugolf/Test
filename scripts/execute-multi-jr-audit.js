@@ -7,6 +7,34 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl || !supabaseKey) { console.error('Missing env vars'); process.exit(1); }
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// --- Normalization Helpers ---
+function normalizeName(name) {
+    if (!name) return "";
+    return name
+        .toString()
+        .replace(/\\n/g, " ") // Handle literal \n
+        .replace(/\n/g, " ")   // Handle actual newlines
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, "") // Remove accents
+        .replace(/[\(\)\[\]]/g, " ") // Remove parentheses and brackets
+        .toLowerCase()
+        .replace(/\s+/g, ' ') // Collapse spaces
+        .trim();
+}
+
+function normalizeLinkedIn(url) {
+    if (!url) return "";
+    try {
+        const cleanUrl = url.toString().replace(/\\n/g, "").replace(/\n/g, "").trim();
+        const urlObj = new URL(cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`);
+        urlObj.search = "";
+        let path = urlObj.pathname.toLowerCase();
+        if (path.endsWith('/')) path = path.slice(0, -1);
+        return path;
+    } catch (e) {
+        return url.toString().replace(/\\n/g, "").replace(/\n/g, "").trim().toLowerCase().replace(/\/$/, "");
+    }
+}
+
 async function runAudit() {
     console.log('🚀 Starting Multi-JR Candidate Audit...\n');
 
@@ -25,17 +53,40 @@ async function runAudit() {
         // Fetch all internal candidates for matching
         const { data: profiles, error: pErr } = await supabase
             .from('Candidate Profile')
-            .select('candidate_id, name');
+            .select('candidate_id, name, linkedin');
         
         if (pErr) throw pErr;
 
+        // Build lookup maps
         const nameMap = new Map();
-        profiles.forEach(p => nameMap.set(p.name.toLowerCase().trim(), p.candidate_id));
+        const linkedinMap = new Map();
+
+        profiles.forEach(p => {
+            if (p.name) nameMap.set(normalizeName(p.name), p.candidate_id);
+            if (p.linkedin) linkedinMap.set(normalizeLinkedIn(p.linkedin), p.candidate_id);
+        });
 
         let matchCount = 0;
         for (const row of staging) {
-            const systemId = nameMap.get(row.report_name?.toLowerCase().trim());
+            let systemId = null;
+            let matchType = null;
+
+            // 1. Try LinkedIn Match first
+            if (row.report_linkedin) {
+                const normReportLI = normalizeLinkedIn(row.report_linkedin);
+                systemId = linkedinMap.get(normReportLI);
+                if (systemId) matchType = 'LinkedIn';
+            }
+
+            // 2. Try Name Match if no LinkedIn match
+            if (!systemId && row.report_name) {
+                const normReportName = normalizeName(row.report_name);
+                systemId = nameMap.get(normReportName);
+                if (systemId) matchType = 'Name';
+            }
+
             if (systemId) {
+                console.log(`🔗 Matched: "${row.report_name}" -> ${systemId} (${matchType})`);
                 await supabase
                     .from('candidate_audit_staging')
                     .update({ system_candidate_id: systemId })
@@ -43,7 +94,7 @@ async function runAudit() {
                 matchCount++;
             }
         }
-        console.log(`✅ Linked ${matchCount} candidates to existing system profiles.\n`);
+        console.log(`\n✅ Linked ${matchCount} candidates to existing system profiles.\n`);
 
         // --- STEP 2: Check Assignment in JR ---
         console.log('Step 2: Checking JR assignments and linking to jr_candidates...');

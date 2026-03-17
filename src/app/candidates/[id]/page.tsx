@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-import { BackButton, EditButton, AddPrescreenDialog, DeleteCandidateDialog } from "@/components/candidate-client-actions";
+import { BackButton, EditButton, AddPrescreenDialog, DeleteCandidateDialog, DeletePrescreenButton } from "@/components/candidate-client-actions";
 import { AddExperienceDialog, DeleteExperienceButton, SetCurrentExperienceButton, EditExperienceDialog } from "@/components/experience-dialog";
 import { formatMonthYear, parseAnyDate } from "@/lib/date-utils";
 import { JobStatusDetailDialog } from "@/components/job-status-dialog";
@@ -573,15 +573,27 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                                                         </AvatarFallback>
                                                     </Avatar>
                                                     <div>
-                                                        <p className="text-sm font-bold text-foreground">{log.screener_name || "Unknown Screener"}</p>
-                                                        <p className="text-xs text-muted-foreground">{log.screening_date || "No Date"}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-sm font-bold text-foreground">{log.screener_Name || "Unknown Screener"}</p>
+                                                            {log.rating_score && (
+                                                                <Badge className={log.rating_score >= 8 ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-secondary text-secondary-foreground"}>
+                                                                    Score: {log.rating_score}/10
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground">{log.screening_date ? formatDateForDisplay(log.screening_date) : "No Date"}</p>
                                                     </div>
                                                 </div>
-                                                {log.rating_score && (
-                                                    <Badge className={log.rating_score >= 8 ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-secondary text-secondary-foreground"}>
-                                                        Score: {log.rating_score}/10
-                                                    </Badge>
-                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    {log.feedback_file && (
+                                                        <a href={log.feedback_file} target="_blank" rel="noopener noreferrer">
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary">
+                                                                <Download className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </a>
+                                                    )}
+                                                    <DeletePrescreenButton logId={log.pre_screen_id} candidateId={candidate.candidate_id} />
+                                                </div>
                                             </div>
                                             <div className="text-sm text-foreground/80 whitespace-pre-wrap p-3 bg-muted/20 rounded-md border border-border/30">
                                                 {log.feedback_text || "No feedback recorded."}

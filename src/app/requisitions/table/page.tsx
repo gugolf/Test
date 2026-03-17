@@ -252,12 +252,12 @@ export default function RequisitionsPage() {
 
 
     // Unique Options
-    const optPosition = Array.from(new Set(jrs.map(j => j.job_title))).sort();
-    const optBu = Array.from(new Set(jrs.map(j => j.division))).sort();
-    const optSubBu = Array.from(new Set(jrs.map(j => j.department))).sort();
+    const optPosition = Array.from(new Set(jrs.map(j => j.job_title).filter(v => v && v.trim() !== ""))).sort();
+    const optBu = Array.from(new Set(jrs.map(j => j.division).filter(v => v && v.trim() !== ""))).sort();
+    const optSubBu = Array.from(new Set(jrs.map(j => j.department).filter(v => v && v.trim() !== ""))).sort();
     const optJrType = ["New", "Replacement"];
     const optIsActive = ["Active", "Inactive"];
-    const optCreatedBy = Array.from(new Set(jrs.map(j => userProfiles[j.created_by || ""] || j.created_by || "System"))).sort();
+    const optCreatedBy = Array.from(new Set(jrs.map(j => userProfiles[j.created_by || ""] || j.created_by || "System").filter(v => v && v.trim() !== ""))).sort();
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 

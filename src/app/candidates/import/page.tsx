@@ -6,14 +6,15 @@ import Link from "next/link";
 import Papa from "papaparse";
 import { processCsvUpload } from "@/app/actions/csv-actions";
 import { createUploadRecord, handleDuplicateResume } from "@/app/actions/resume-actions";
-import { getJobRequisitions } from "@/app/actions/requisitions";
 import { bulkAddCandidatesToJR } from "@/app/actions/jr-candidates";
+import { AddCandidateDialog } from "@/components/ai-search/AddCandidateDialog";
 import { getStatuses } from "@/app/actions/candidate-filters";
 import { getUserProfiles, UserProfile } from "@/app/actions/user-actions";
 import { createClient } from "@/utils/supabase/client";
 import { updateUploadCandidateStatus } from "@/app/actions/resume-actions"; // Import update action
 // Ensure ResumeUpload is exported correctly in src/components/ResumeUpload.tsx
 import { ResumeUpload, UploadedFile } from "@/components/ResumeUpload";
+import { LogTableRow } from "@/components/import/LogTableRow";
 import {
     ArrowLeft,
     UploadCloud,
@@ -77,13 +78,7 @@ interface UploadLog {
     candidate_status?: string; // Added field
 }
 
-interface JobRequisition {
-    id: string;
-    title: string;
-    department: string;
-    division: string;
-    status: string;
-}
+
 
 export default function CandidateImportPage() {
     const router = useRouter();
@@ -104,9 +99,15 @@ export default function CandidateImportPage() {
 
     // Selection & JR Logic
     const [selectedIds, setSelectedIds] = useState<(number | string)[]>([]); // Log IDs
-    const [openJRDialog, setOpenJRDialog] = useState(false);
+    const [openJrDialog, setOpenJrDialog] = useState(false);
     
-    // Duplicate Handling State
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize] = useState(25);
+    const [totalLogs, setTotalLogs] = useState(0);
+
+    // Filters
+    const [searchTerm, setSearchTerm] = useState("");
     const [openDuplicateDialog, setOpenDuplicateDialog] = useState(false);
     const [duplicateData, setDuplicateData] = useState<{
         existingRecord: any;
@@ -114,14 +115,8 @@ export default function CandidateImportPage() {
         fileName: string;
     } | null>(null);
     const [processingDuplicate, setProcessingDuplicate] = useState(false);
-    const [jrs, setJrs] = useState<JobRequisition[]>([]);
-    const [loadingJrs, setLoadingJrs] = useState(false);
-    const [jrSearch, setJrSearch] = useState("");
-    const [selectedJrId, setSelectedJrId] = useState<string | null>(null);
-    const [addingToJr, setAddingToJr] = useState(false);
 
     // Filter & Sort State
-    const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [userFilter, setUserFilter] = useState<string>("all");
     const [sortConfig, setSortConfig] = useState<{ key: keyof UploadLog; direction: 'asc' | 'desc' } | null>(null);
@@ -161,39 +156,67 @@ export default function CandidateImportPage() {
 
     useEffect(() => {
         fetchLogs();
+    }, [viewMode, currentPage, statusFilter, userFilter]);
+
+    // Debounced search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (currentPage !== 1) {
+                setCurrentPage(1);
+            } else {
+                fetchLogs();
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        setCurrentPage(1);
     }, [viewMode]);
 
     const fetchLogs = async () => {
         setLoadingLogs(true);
-        const supabase = createClient();
-        let data: any[] | null = null;
-        let error: any = null;
+        try {
+            const supabase = createClient();
+            const from = (currentPage - 1) * pageSize;
+            const to = from + pageSize - 1;
 
-        if (viewMode === 'csv') {
-            const result = await supabase
-                .from('csv_upload_logs')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(200);
-            data = result.data;
-            error = result.error;
-        } else {
-            const result = await supabase
-                .from('resume_uploads')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(200);
-            data = result.data;
-            error = result.error;
-        }
+            let query = supabase
+                .from(viewMode === 'csv' ? 'csv_upload_logs' : 'resume_uploads')
+                .select('*', { count: 'exact' });
 
-        if (error) {
+            // Backend Search
+            if (searchTerm) {
+                const search = `%${searchTerm}%`;
+                if (viewMode === 'csv') {
+                    query = query.or(`name.ilike.${search},note.ilike.${search},candidate_id.ilike.${search}`);
+                } else {
+                    query = query.or(`file_name.ilike.${search},note.ilike.${search},candidate_id.ilike.${search}`);
+                }
+            }
+
+            // Backend Filters
+            if (statusFilter !== 'all') {
+                query = query.eq('status', statusFilter);
+            }
+            if (userFilter !== 'all') {
+                query = query.eq('uploader_email', userFilter);
+            }
+
+            const { data, count, error } = await query
+                .order('created_at', { ascending: false })
+                .range(from, to);
+
+            if (error) throw error;
+
+            setLogs(data || []);
+            setTotalLogs(count || 0);
+        } catch (error) {
             console.error(error);
             toast.error("Failed to load history");
-        } else {
-            setLogs(data || []);
+        } finally {
+            setLoadingLogs(false);
         }
-        setLoadingLogs(false);
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -376,13 +399,17 @@ export default function CandidateImportPage() {
     };
 
     // --- JR Selection Logic ---
-    const handleOpenJRDialog = async () => {
+    const handleOpenJrDialog = () => {
         if (selectedIds.length === 0) return;
-        setOpenJRDialog(true);
-        setLoadingJrs(true);
-        const data = await getJobRequisitions();
-        setJrs(data.filter(j => j.is_active));
-        setLoadingJrs(false);
+
+        // Check if any valid candidates (with ID) are selected
+        const validCount = logs.filter(l => selectedIds.includes(l.id) && l.candidate_id?.startsWith('C')).length;
+        if (validCount === 0) {
+            toast.error("No valid candidates selected (Must have Candidate ID)");
+            return;
+        }
+
+        setOpenJrDialog(true);
     };
 
     const handleSelectAll = (checked: boolean) => {
@@ -401,99 +428,34 @@ export default function CandidateImportPage() {
         }
     };
 
-    const handleAddToJR = async () => {
-        if (!selectedJrId) {
-            toast.error("Please select a Job Requisition");
-            return;
-        }
+    // Memoized selection data to prevent lag on complex pages
+    const selectedCandidateData = React.useMemo(() => {
+        return logs
+            .filter(l => selectedIds.includes(l.id) && l.candidate_id?.startsWith('C'))
+            .map(l => ({
+                id: l.candidate_id!,
+                name: l.name || l.file_name || "Unknown"
+            }));
+    }, [logs, selectedIds]);
 
-        setAddingToJr(true);
-        try {
-            // Get candidate info from selected logs
-            const selectedCandidates = logs
-                .filter(l => selectedIds.includes(l.id) && l.candidate_id?.startsWith('C'))
-                .map(l => ({ id: l.candidate_id!, name: l.name || l.file_name || "Unknown" })) as { id: string, name: string }[];
+    const uniqueUsers = React.useMemo(() => Array.from(new Set(logs.map(log => log.uploader_email).filter(Boolean))).sort(), [logs]);
+    const uniqueStatuses = React.useMemo(() => Array.from(new Set(logs.map(log => log.status).filter(Boolean))).sort(), [logs]);
 
-            if (selectedCandidates.length === 0) {
-                toast.error("No valid candidates selected (Must have Candidate ID)");
-                setAddingToJr(false);
-                return;
-            }
+    const filteredLogs = logs;
 
-            // Remove duplicates within selection
-            const uniqueCandidates = Array.from(new Map(selectedCandidates.map(item => [item.id, item])).values());
-
-            const res = await bulkAddCandidatesToJR(selectedJrId, uniqueCandidates);
-
-            if (res.success) {
-                setOpenJRDialog(false);
-                setSelectedIds([]);
-                setSelectedJrId(null);
-
-                // Show Summary
-                if (res.duplicates && res.duplicates.length > 0) {
-                    toast.message("Added with Duplicates skipped", {
-                        description: (
-                            <div className="max-h-32 overflow-y-auto mt-2 text-xs">
-                                <p className="font-bold text-emerald-600 mb-1">Success: {res.added}</p>
-                                <p className="font-bold text-amber-600 mb-1">Skipped (Already in JR): {res.duplicates.length}</p>
-                                <ul className="list-disc pl-4 text-slate-500">
-                                    {res.duplicates.slice(0, 5).map((n, i) => <li key={i}>{n}</li>)}
-                                    {res.duplicates.length > 5 && <li>...and {res.duplicates.length - 5} more</li>}
-                                </ul>
-                            </div>
-                        ),
-                        duration: 5000
-                    });
-                } else {
-                    toast.success(`Successfully added ${res.added} candidates to JR`);
-                }
-
-            } else {
-                toast.error("Failed to add to JR: " + res.error);
-            }
-        } catch (error: any) {
-            toast.error("Error: " + error.message);
-        } finally {
-            setAddingToJr(false);
-        }
-    };
-
-    // Filter Logic
-    const filteredJrs = jrs.filter(jr =>
-        jr.title.toLowerCase().includes(jrSearch.toLowerCase()) ||
-        jr.department.toLowerCase().includes(jrSearch.toLowerCase()) ||
-        jr.division.toLowerCase().includes(jrSearch.toLowerCase()) ||
-        jr.id.toLowerCase().includes(jrSearch.toLowerCase())
-    );
-
-    const uniqueUsers = Array.from(new Set(logs.map(l => l.uploader_email).filter(Boolean)));
-    const uniqueStatuses = Array.from(new Set(logs.map(l => l.status).filter(Boolean)));
-
-    const filteredLogs = logs.filter(log => {
-        const matchesSearch =
-            (log.name && log.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (log.file_name && log.file_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (log.candidate_id && log.candidate_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (log.note && log.note.toLowerCase().includes(searchQuery.toLowerCase()));
-
-        const matchesStatus = statusFilter === "all" || log.status === statusFilter;
-        const matchesUser = userFilter === "all" || log.uploader_email === userFilter;
-
-        return matchesSearch && matchesStatus && matchesUser;
-    });
-
-    const sortedLogs = [...filteredLogs].sort((a, b) => {
-        if (!sortConfig) return 0;
+    const sortedLogs = React.useMemo(() => {
+        if (!sortConfig) return filteredLogs;
+        return [...filteredLogs].sort((a, b) => {
 
         // Handle potentially missing keys safely
         const valA = (a as any)[sortConfig.key] || "";
         const valB = (b as any)[sortConfig.key] || "";
 
-        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-    });
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [filteredLogs, sortConfig]);
 
     const requestSort = (key: keyof UploadLog) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -566,8 +528,8 @@ export default function CandidateImportPage() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Manual Input">Manual Input</SelectItem>
-                                {userProfiles.map((profile, idx) => (
-                                    <SelectItem key={`${profile.email}-${idx}`} value={profile.real_name}>
+                                {userProfiles.filter(p => !!p.real_name && p.real_name.trim() !== "").map((profile) => (
+                                    <SelectItem key={profile.email} value={profile.real_name}>
                                         {profile.real_name}
                                     </SelectItem>
                                 ))}
@@ -580,7 +542,7 @@ export default function CandidateImportPage() {
                         {selectedIds.length > 0 && (
                             <Button
                                 className="bg-amber-500 hover:bg-amber-600 text-white animate-in zoom-in fade-in slide-in-from-right-4"
-                                onClick={handleOpenJRDialog}
+                                onClick={handleOpenJrDialog}
                             >
                                 <PlusCircle className="w-4 h-4 mr-2" /> Add {selectedIds.length} to Job
                             </Button>
@@ -725,7 +687,7 @@ export default function CandidateImportPage() {
                                 </TabsList>
                             </Tabs>
                             <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                {filteredLogs.length} records
+                                {totalLogs} records
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -741,7 +703,7 @@ export default function CandidateImportPage() {
                     <div className="flex flex-col md:flex-row gap-3">
                         <div className="relative flex-1">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                            <Input placeholder="Search by name, ID or note..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-white border-slate-200" />
+                            <Input placeholder="Search by name, ID or note..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 bg-white border-slate-200" />
                         </div>
                         <div className="flex gap-2 w-full md:w-auto">
                             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -750,7 +712,7 @@ export default function CandidateImportPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Statuses</SelectItem>
-                                    {uniqueStatuses.map((status, idx) => <SelectItem key={`${status}-${idx}`} value={status}>{status}</SelectItem>)}
+                                    {uniqueStatuses.map((status: string, idx: number) => <SelectItem key={`${status}-${idx}`} value={status}>{status}</SelectItem>)}
                                 </SelectContent>
                             </Select>
 
@@ -760,12 +722,12 @@ export default function CandidateImportPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Users</SelectItem>
-                                    {uniqueUsers.map((user, idx) => <SelectItem key={`${user}-${idx}`} value={user}>{user}</SelectItem>)}
+                                    {uniqueUsers.map((user: string, idx: number) => <SelectItem key={`${user}-${idx}`} value={user}>{user}</SelectItem>)}
                                 </SelectContent>
                             </Select>
 
-                            {(statusFilter !== "all" || userFilter !== "all" || searchQuery) && (
-                                <Button variant="ghost" size="icon" onClick={() => { setStatusFilter("all"); setUserFilter("all"); setSearchQuery(""); }} className="text-slate-400 hover:text-red-500">
+                            {(statusFilter !== "all" || userFilter !== "all" || searchTerm) && (
+                                <Button variant="ghost" size="icon" onClick={() => { setStatusFilter("all"); setUserFilter("all"); setSearchTerm(""); }} className="text-slate-400 hover:text-red-500">
                                     <X className="h-4 w-4" />
                                 </Button>
                             )}
@@ -816,152 +778,57 @@ export default function CandidateImportPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {sortedLogs.map((log) => (
-                                    <TableRow key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <TableCell>
-                                            <Checkbox
-                                                checked={selectedIds.includes(log.id)}
-                                                onCheckedChange={(checked) => handleSelectOne(log.id, !!checked)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="text-xs text-slate-500 font-mono">
-                                            {new Date(log.created_at).toLocaleString('th-TH')}
-                                        </TableCell>
-                                        <TableCell>
-                                            {/* Feature 1: Clickable ID if status is 'Complete' or ID exists */}
-                                            {log.candidate_id && log.candidate_id.startsWith('C') ? (
-                                                <Link href={`/candidates/${log.candidate_id}`} className="hover:underline">
-                                                    <Badge variant="outline" className="font-mono text-xs bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 cursor-pointer">
-                                                        {log.candidate_id}
-                                                    </Badge>
-                                                </Link>
-                                            ) : (
-                                                <Badge variant="outline" className="font-mono text-xs bg-slate-50 text-slate-400 border-slate-200">
-                                                    {log.candidate_id || '-'}
-                                                </Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-col">
-                                                <span className="font-medium text-slate-800 text-sm">
-                                                    {log.name || log.file_name || "Unknown"}
-                                                </span>
-                                                {viewMode === 'resume' && log.candidate_id && log.name && log.file_name && (
-                                                    <span className="text-[10px] text-slate-400">{log.file_name}</span>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        {viewMode === 'resume' && (
-                                            <TableCell>
-                                                {log.resume_url && (
-                                                    <a href={log.resume_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-                                                        <FileText className="w-4 h-4" />
-                                                    </a>
-                                                )}
-                                            </TableCell>
-                                        )}
-                                        <TableCell className="text-xs text-slate-500 truncate max-w-[150px]">{log.uploader_email}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="secondary" className={cn("text-[10px] uppercase font-bold tracking-wider",
-                                                log.status === 'Completed' || log.status === 'Complete' || log.status === 'Scraping' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                                                    log.status.includes('Duplicate') ? "bg-amber-50 text-amber-600 border-amber-100" :
-                                                        log.status === 'pending' || log.status === 'Processing' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                                                            "bg-red-50 text-red-600 border-red-100")}>
-                                                {log.status}
-                                            </Badge>
-                                        </TableCell>
-
-                                        {/* Candidate Status Dropdown */}
-                                        <TableCell>
-                                            <StatusSelect
-                                                value={log.candidate_status || ""}
-                                                onChange={async (val) => {
-                                                    // Optimistic Update
-                                                    setLogs(prev => prev.map(l => l.id === log.id ? { ...l, candidate_status: val } : l));
-
-                                                    // API Call
-                                                    const res = await updateUploadCandidateStatus(String(log.id), val, viewMode);
-                                                    if (res.success) {
-                                                        toast.success("Status updated");
-                                                    } else {
-                                                        toast.error("Failed to update status");
-                                                        // Revert if needed
-                                                    }
-                                                }}
-                                                className="w-[180px] h-8 text-xs bg-white border-slate-200"
-                                                placeholder="Select Status"
-                                            />
-                                        </TableCell>
-                                        <TableCell className="text-xs text-slate-500 italic truncate max-w-[200px]">{log.note}</TableCell>
-                                    </TableRow>
+                                {filteredLogs.map((log) => (
+                                    <LogTableRow
+                                        key={log.id}
+                                        log={log}
+                                        viewMode={viewMode}
+                                        isSelected={selectedIds.includes(log.id)}
+                                        onSelectChange={(checked) => {
+                                            setSelectedIds(prev => 
+                                                checked 
+                                                    ? [...prev, log.id] 
+                                                    : prev.filter(id => id !== log.id)
+                                            );
+                                        }}
+                                        onStatusChange={async (newStatus) => {
+                                            // Optimistic Update
+                                            setLogs(prev => prev.map(l => l.id === log.id ? { ...l, candidate_status: newStatus } : l));
+                                            const res = await updateUploadCandidateStatus(String(log.id), newStatus, viewMode);
+                                            return res.success;
+                                        }}
+                                    />
                                 ))}
                             </TableBody>
                         </Table>
                     )}
                 </CardContent>
+                {totalLogs > pageSize && (
+                    <div className="px-6 py-4 border-t flex items-center justify-between">
+                        <div className="text-xs text-slate-500">
+                            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalLogs)} of {totalLogs} entries
+                        </div>
+                        <PaginationControls
+                            currentPage={currentPage}
+                            totalCount={totalLogs}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                        />
+                    </div>
+                )}
             </Card>
 
             {/* JR Selection Dialog */}
-            <Dialog open={openJRDialog} onOpenChange={setOpenJRDialog}>
-                {/* ... (Existing JR Dialog Content) ... */}
-                <DialogContent className="sm:max-w-[600px] h-[80vh] flex flex-col">
-                    <DialogHeader>
-                        <DialogTitle>Add {selectedIds.length} Candidate(s) to Requisition</DialogTitle>
-                        <DialogDescription>Select a target Job Requisition to add these candidates.</DialogDescription>
-                    </DialogHeader>
-
-                    <div className="relative mt-2">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search by Title, ID, BU or Department..."
-                            className="pl-9"
-                            value={jrSearch}
-                            onChange={(e) => setJrSearch(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto border rounded-md mt-2 p-1">
-                        {loadingJrs ? (
-                            <div className="flex justify-center p-8"><Loader2 className="animate-spin text-slate-400" /></div>
-                        ) : filteredJrs.length === 0 ? (
-                            <div className="text-center p-8 text-slate-400 text-sm">No Active Job Requisitions found matching your search.</div>
-                        ) : (
-                            <div className="space-y-1">
-                                {filteredJrs.map(jr => (
-                                    <div
-                                        key={jr.id}
-                                        className={cn(
-                                            "flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all",
-                                            selectedJrId === jr.id ? "bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500" : "hover:bg-slate-50 border-transparent hover:border-slate-200"
-                                        )}
-                                        onClick={() => setSelectedJrId(jr.id)}
-                                    >
-                                        <div>
-                                            <div className="font-semibold text-sm text-slate-800">{jr.title} <span className="text-xs text-slate-400 font-normal ml-1">({jr.id})</span></div>
-                                            <div className="text-xs text-slate-500 flex gap-2 mt-1">
-                                                <Badge variant="secondary" className="text-[10px] px-1 h-5">{jr.department}</Badge>
-                                                <Badge variant="outline" className="text-[10px] px-1 h-5 text-slate-500">{jr.division}</Badge>
-                                            </div>
-                                        </div>
-                                        {selectedJrId === jr.id && <CheckSquare className="w-5 h-5 text-indigo-600" />}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <DialogFooter className="mt-4">
-                        <div className="mr-auto text-xs text-slate-500 self-center">
-                            Note: Duplicates in target JR will be skipped automatically.
-                        </div>
-                        <Button variant="outline" onClick={() => setOpenJRDialog(false)}>Cancel</Button>
-                        <Button onClick={handleAddToJR} disabled={!selectedJrId || addingToJr} className="bg-indigo-600 hover:bg-indigo-700">
-                            {addingToJr && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Confirm & Add
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <AddCandidateDialog
+                open={openJrDialog}
+                onOpenChange={setOpenJrDialog}
+                candidateIds={selectedCandidateData.map(c => c.id)}
+                candidateNames={selectedCandidateData.map(c => c.name)}
+                onSuccess={() => {
+                    setSelectedIds([]);
+                    setOpenJrDialog(false);
+                }}
+            />
 
             {/* Duplicate Resume Dialog */}
             <Dialog open={openDuplicateDialog} onOpenChange={setOpenDuplicateDialog}>
@@ -1016,4 +883,69 @@ export default function CandidateImportPage() {
             </Dialog>
         </div>
     );
+}
+
+function PaginationControls({ currentPage, totalCount, pageSize, onPageChange }: any) {
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+    // Sliding Window Logic
+    let startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, startPage + 4);
+
+    if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
+    }
+
+    const pages = [];
+    for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+    }
+
+    return (
+        <div className="flex items-center gap-1">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+            >
+                Previous
+            </Button>
+
+            {startPage > 1 && (
+                <>
+                    <Button variant="ghost" size="sm" className="w-8 h-8 p-0 text-xs" onClick={() => onPageChange(1)}>1</Button>
+                    {startPage > 2 && <span className="text-muted-foreground px-1 text-xs">...</span>}
+                </>
+            )}
+
+            {pages.map(p => (
+                <Button
+                    key={p}
+                    variant={currentPage === p ? "default" : "ghost"}
+                    size="sm"
+                    className="w-8 h-8 p-0 text-xs"
+                    onClick={() => onPageChange(p)}
+                >
+                    {p}
+                </Button>
+            ))}
+
+            {endPage < totalPages && (
+                <>
+                    {endPage < totalPages - 1 && <span className="text-muted-foreground px-1 text-xs">...</span>}
+                    <Button variant="ghost" size="sm" className="w-8 h-8 p-0 text-xs" onClick={() => onPageChange(totalPages)}>{totalPages}</Button>
+                </>
+            )}
+
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage >= totalPages}
+            >
+                Next
+            </Button>
+        </div>
+    )
 }

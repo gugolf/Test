@@ -6,11 +6,6 @@ import { getCurrentUserRealName } from "./user-actions";
 
 export async function getJobRequisitions(): Promise<JobRequisition[]> {
     const supabase = adminAuthClient;
-    // Query existing table 'job_requisitions' (or whatever the view is)
-    // Based on job.ts, it seems to be 'job_requisitions' or similar.
-    // I'll assume a standard select for now and map it.
-
-    // Debug: Check table structure if needed, but for now assuming standard fields from job.ts context
     const { data, error } = await supabase
         .from('job_requisitions')
         .select('*')
@@ -21,6 +16,10 @@ export async function getJobRequisitions(): Promise<JobRequisition[]> {
         return [];
     }
 
+    return mapRowsToJRs(data);
+}
+
+function mapRowsToJRs(data: any[]): JobRequisition[] {
     return data.map((row: any) => ({
         id: row.jr_id,
         job_title: row.position_jr || "Untitled Position",
@@ -43,6 +42,29 @@ export async function getJobRequisitions(): Promise<JobRequisition[]> {
         job_description: row.job_description || "",
         feedback_file: row.feedback_file || "",
     }));
+}
+
+/**
+ * Optimized consolidated fetch for JR Selection Dialog
+ * Reduces 5 calls to 1.
+ */
+export async function getJRSelectionData() {
+    const jrs = await getJobRequisitions();
+    
+    const positions = [...new Set(jrs.map(j => j.title).filter(Boolean))].sort();
+    const divisions = [...new Set(jrs.map(j => j.division).filter(Boolean))].sort();
+    const subDivisions = [...new Set(jrs.map(j => j.department).filter(Boolean))].sort();
+    const originalJrs = [...new Set(jrs.map(j => j.id).filter(Boolean))].sort();
+
+    return {
+        jrs,
+        options: {
+            positions,
+            divisions,
+            subDivisions,
+            originalJrs
+        }
+    };
 }
 
 

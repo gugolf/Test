@@ -38,6 +38,7 @@ export interface ConsolidatedResult {
     inferred_insights?: any; // Keeping for backward compatibility or generic bags
     executive_summary?: string;
     created_at: string;
+    onboarded_id?: string; // New field for identifying if external is already internal
 }
 
 export interface ExternalCandidateDetail {

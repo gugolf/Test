@@ -10,7 +10,9 @@ import {
     Briefcase,
     Globe,
     Database,
-    Linkedin
+    Linkedin,
+    UserPlus,
+    CheckCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -28,6 +30,9 @@ interface Props {
     onToggleSelect?: (id: string) => void;
     onToggleSelectAll?: (ids: string[]) => void;
     onBulkAddToJR?: (ids: string[]) => void;
+    onOnboard?: (id: string, name: string) => void;
+    onBulkOnboard?: (ids: string[]) => void;
+    onboardingIds?: string[]; // IDs currently being processed
 }
 
 export function ResultsTable({
@@ -38,7 +43,10 @@ export function ResultsTable({
     selectedIds = [],
     onToggleSelect,
     onToggleSelectAll,
-    onBulkAddToJR
+    onBulkAddToJR,
+    onOnboard,
+    onBulkOnboard,
+    onboardingIds = []
 }: Props) {
     if (!results || results.length === 0) {
         return (
@@ -205,7 +213,32 @@ export function ResultsTable({
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center self-stretch">
+                                        <div className="flex flex-col items-center justify-center gap-2 self-stretch ml-2">
+                                            {result.source === 'external_db' && onOnboard && (
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    disabled={!!result.onboarded_id || onboardingIds.includes(result.id)}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onOnboard(result.id, result.name);
+                                                    }}
+                                                    className={cn(
+                                                        "h-8 w-8 rounded-lg transition-all",
+                                                        result.onboarded_id
+                                                            ? "text-emerald-500 bg-emerald-50 cursor-default"
+                                                            : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                                    )}
+                                                >
+                                                    {onboardingIds.includes(result.id) ? (
+                                                        <Plus className="w-4 h-4 animate-spin" />
+                                                    ) : result.onboarded_id ? (
+                                                        <CheckCircle className="w-4 h-4" />
+                                                    ) : (
+                                                        <UserPlus className="w-4 h-4" />
+                                                    )}
+                                                </Button>
+                                            )}
                                             <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all" />
                                         </div>
                                     </div>
@@ -222,7 +255,7 @@ export function ResultsTable({
 
             {/* Selection Toolbar */}
             <AnimatePresence>
-                {selectedIds.length > 0 && onBulkAddToJR && (
+                {selectedIds.length > 0 && (
                     <motion.div
                         initial={{ y: 100, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
@@ -230,16 +263,32 @@ export function ResultsTable({
                         className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-4 bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 ring-1 ring-black/50"
                     >
                         <div className="flex flex-col">
-                            <span className="text-xs font-bold">{selectedIds.length} Candidates Selected</span>
-                            <span className="text-[10px] text-slate-400 font-medium">Bulk Action</span>
+                            <span className="text-xs font-bold">{selectedIds.length} Selected</span>
+                            <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Bulk Action</span>
                         </div>
                         <div className="w-px h-8 bg-white/10 mx-2" />
-                        <Button
-                            onClick={() => onBulkAddToJR(selectedIds)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-10 px-6 font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
-                        >
-                            <Plus className="w-4 h-4" /> Add to Job Requisition
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            {onBulkAddToJR && (
+                                <Button
+                                    onClick={() => onBulkAddToJR(selectedIds)}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-10 px-6 font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
+                                >
+                                    <Plus className="w-4 h-4" /> Add to Job Requisition
+                                </Button>
+                            )}
+                            {onBulkOnboard && results.some(r => selectedIds.includes(r.id) && r.source === 'external_db' && !r.onboarded_id) && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => onBulkOnboard(selectedIds.filter(id => {
+                                        const r = results.find(res => res.id === id);
+                                        return r?.source === 'external_db' && !r.onboarded_id;
+                                    }))}
+                                    className="bg-transparent border-white/20 hover:bg-white/10 text-white rounded-xl h-10 px-6 font-bold flex items-center gap-2 transition-all active:scale-95"
+                                >
+                                    <UserPlus className="w-4 h-4" /> Onboard to Pool
+                                </Button>
+                            )}
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

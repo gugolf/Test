@@ -6,8 +6,8 @@ import { SearchHistory } from "@/components/ai-search/SearchHistory";
 import { ResultsTable } from "@/components/ai-search/ResultsTable";
 import { CandidateDetailPanel } from "@/components/ai-search/CandidateDetailPanel";
 import { ConsolidatedResult } from "@/components/ai-search/types";
-import { getSearchResults, getSearchJob, getSearchJobStatuses } from "@/app/actions/ai-search";
-import { Loader2, AlertCircle, Sparkles, Globe, ChevronDown, ChevronRight } from "lucide-react";
+import { getSearchResults, getSearchJob, getSearchJobStatuses, onboardExternalCandidate, bulkOnboardExternalCandidates } from "@/app/actions/ai-search";
+import { Loader2, AlertCircle, Sparkles, Globe, ChevronDown, ChevronRight, UserPlus, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { AtsBreadcrumb } from "@/components/ats-breadcrumb";
@@ -35,6 +35,14 @@ export default function AISearchPage() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [targetCandidateIds, setTargetCandidateIds] = useState<string[]>([]);
+    const [onboardingIds, setOnboardingIds] = useState<string[]>([]);
+    const [userEmail, setUserEmail] = useState<string>("admin@cgtalent.com"); // Fallback fallback
+
+    // Get user email for auditing
+    useEffect(() => {
+        const email = localStorage.getItem('uploader_email');
+        if (email) setUserEmail(email);
+    }, []);
     // Polling setup
     useEffect(() => {
         if (!activeSessionId || sessionStatus !== 'processing') return;
@@ -124,6 +132,61 @@ export default function AISearchPage() {
         setTargetCandidateIds(ids);
         setIsAddDialogOpen(true);
     };
+
+    const handleOnboard = async (id: string, name: string) => {
+        const result = results.find(r => r.id === id);
+        if (!result || result.source !== 'external_db') return;
+
+        setOnboardingIds(prev => [...prev, id]);
+        try {
+            const res = await onboardExternalCandidate(result.candidate_ref_id, userEmail);
+            if (res.success) {
+                toast.success(`Successfully onboarded ${name}`);
+                // Refresh results to show checkmark
+                fetchResults(activeSessionId!, true);
+            } else {
+                toast.error(`Failed to onboard ${name}: ${res.error}`);
+            }
+        } catch (error) {
+            toast.error("An error occurred during onboarding");
+        } finally {
+            setOnboardingIds(prev => prev.filter(i => i !== id));
+        }
+    };
+
+    const handleBulkOnboard = async (ids: string[]) => {
+        if (ids.length === 0) return;
+
+        const externalResults = results.filter(r => ids.includes(r.id) && r.source === 'external_db' && !r.onboarded_id);
+        if (externalResults.length === 0) return;
+
+        const extRefIds = externalResults.map(r => r.candidate_ref_id);
+        
+        setOnboardingIds(prev => [...prev, ...externalResults.map(r => r.id)]);
+        try {
+            const res = await bulkOnboardExternalCandidates(extRefIds, userEmail);
+            if (res.success) {
+                toast.success(`Successfully onboarded ${res.onboarded} candidates`);
+                fetchResults(activeSessionId!, true);
+                setSelectedIds([]);
+            } else {
+                toast.error(`Bulk onboarding failed: ${res.error}`);
+            }
+        } catch (error) {
+            toast.error("An error occurred during bulk onboarding");
+        } finally {
+            setOnboardingIds(prev => prev.filter(i => !externalResults.map(r => r.id).includes(i)));
+        }
+    };
+
+    const handleOnboardAll = () => {
+        const allExternalUnonboarded = results.filter(r => r.source === 'external_db' && !r.onboarded_id);
+        if (allExternalUnonboarded.length === 0) {
+            toast.info("No new external candidates to onboard");
+            return;
+        }
+        handleBulkOnboard(allExternalUnonboarded.map(r => r.id));
+    };
     return (
         <div className="flex h-screen bg-slate-50/50 overflow-hidden">
             {/* Left Sidebar: Collapsible */}
@@ -209,25 +272,37 @@ export default function AISearchPage() {
                             </div>
 
                             {/* Source Filter Tabs */}
-                            <div className="flex bg-slate-100 p-1 rounded-lg">
-                                <button
-                                    onClick={() => setFilterSource('all')}
-                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${filterSource === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    All Candidates
-                                </button>
-                                <button
-                                    onClick={() => setFilterSource('internal')}
-                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${filterSource === 'internal' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Internal
-                                </button>
-                                <button
-                                    onClick={() => setFilterSource('external')}
-                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${filterSource === 'external' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> External
-                                </button>
+                             {/* Source Filter Tabs & Quick Actions */}
+                            <div className="flex items-center gap-3">
+                                {results.some(r => r.source === 'external_db' && !r.onboarded_id) && (
+                                    <button
+                                        onClick={handleOnboardAll}
+                                        disabled={onboardingIds.length > 0}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-all disabled:opacity-50"
+                                    >
+                                        <UserPlus className="w-3 h-3" /> Onboard All Market Results
+                                    </button>
+                                )}
+                                <div className="flex bg-slate-100 p-1 rounded-lg">
+                                    <button
+                                        onClick={() => setFilterSource('all')}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${filterSource === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        All Candidates
+                                    </button>
+                                    <button
+                                        onClick={() => setFilterSource('internal')}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${filterSource === 'internal' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Internal
+                                    </button>
+                                    <button
+                                        onClick={() => setFilterSource('external')}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${filterSource === 'external' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> External
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -297,6 +372,9 @@ export default function AISearchPage() {
                                 onToggleSelect={handleToggleSelect}
                                 onToggleSelectAll={handleToggleSelectAll}
                                 onBulkAddToJR={handleBulkAddToJR}
+                                onOnboard={handleOnboard}
+                                onBulkOnboard={handleBulkOnboard}
+                                onboardingIds={onboardingIds}
                             />
                         </div>
                     </div>
@@ -321,6 +399,7 @@ export default function AISearchPage() {
                     onOpenChange={setIsAddDialogOpen}
                     candidateIds={targetCandidateIds}
                     candidateNames={targetCandidateIds.map(id => results.find(r => r.id === id)?.name || "Unknown")}
+                    candidateSources={targetCandidateIds.map(id => results.find(r => r.id === id)?.source || "internal_db")}
                     onSuccess={() => {
                         setSelectedIds([]);
                     }}

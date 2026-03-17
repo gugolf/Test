@@ -4,6 +4,7 @@ import { adminAuthClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { JRCandidate, JRAnalytics } from "@/types/requisition";
 import { getCandidateIdsByExperienceFilters } from "@/lib/candidate-service";
+import { onboardExternalCandidate } from "./ai-search";
 
 // Get current logged-in user email from session
 async function getCurrentUserEmail(): Promise<string> {
@@ -352,7 +353,7 @@ export async function addCandidatesToJR(
 
 export async function bulkAddCandidatesToJR(
     jrId: string,
-    candidates: { id: string, name: string }[],
+    candidates: { id: string, name: string, source?: string }[],
     listType: string = 'Longlist',
     addedByOverride?: string
 ): Promise<{ success: boolean; added: number; duplicates: string[]; blacklisted: string[]; error?: string }> {
@@ -364,8 +365,27 @@ export async function bulkAddCandidatesToJR(
         // Get current user email for tracking
         const addedBy = addedByOverride || await getCurrentUserEmail();
 
+        // 1. Process Onboarding for External Candidates
+        const processedCandidates: { id: string, name: string }[] = [];
+        
+        for (const cand of candidates) {
+            if (cand.source === 'external_db') {
+                const onboardResult = await onboardExternalCandidate(cand.id, addedBy);
+                if (onboardResult.success && onboardResult.candidateId) {
+                    processedCandidates.push({ id: onboardResult.candidateId, name: cand.name });
+                } else {
+                    console.error(`Failed to onboard ${cand.name} (${cand.id}):`, onboardResult.error);
+                    // Skip if onboarding fails? Or throw? For now, we'll skip and continue with others.
+                }
+            } else {
+                processedCandidates.push({ id: cand.id, name: cand.name });
+            }
+        }
+
+        if (processedCandidates.length === 0) return { success: true, added: 0, duplicates: [], blacklisted: [] };
+
         // 0. Check for Blacklisted Candidates
-        const candidateIdsToCheck = candidates.map(c => c.id);
+        const candidateIdsToCheck = processedCandidates.map(c => c.id);
         const { data: blacklistData, error: blError } = await supabase
             .from('Candidate Profile')
             .select('candidate_id, candidate_status, blacklist_note')
@@ -386,7 +406,7 @@ export async function bulkAddCandidatesToJR(
         const blacklistedNames: string[] = [];
 
         // Filter out blacklisted
-        const candidatesSafe = candidates.filter(c => {
+        const candidatesSafe = processedCandidates.filter(c => {
             if (blacklistedIds.has(c.id)) {
                 blacklistedNames.push(c.name);
                 return false;

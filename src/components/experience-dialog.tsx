@@ -96,23 +96,27 @@ function CreatableCombobox({
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className={cn("justify-between w-full font-normal text-left", !value && "text-muted-foreground", className)}
-                >
-                    {value || placeholder}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[300px] p-0" align="start">
-                <Command shouldFilter={false}>
-                    <CommandInput
-                        placeholder={placeholder}
-                        onValueChange={handleSearch}
+                <div className="relative w-full">
+                    <Input
                         value={value}
+                        onChange={(e) => {
+                            handleSearch(e.target.value);
+                            if (!open) setOpen(true);
+                        }}
+                        onFocus={() => {
+                            if (options.length === 0 && defaultOptions.length > 0) {
+                                setOptions(defaultOptions);
+                            }
+                            setOpen(true);
+                        }}
+                        placeholder={placeholder}
+                        className={cn("w-full pr-10 h-10 bg-white border-slate-200 focus:ring-primary/20", className)}
                     />
+                    <ChevronsUpDown className="absolute right-3 top-3 h-4 w-4 shrink-0 opacity-50" />
+                </div>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                <Command shouldFilter={false}>
                     <CommandList>
                         {isSearching ? (
                             <div className="p-4 text-xs text-center text-muted-foreground flex items-center justify-center gap-2">

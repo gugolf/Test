@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, Plus, Loader2, Briefcase, Building2, CheckCircle2 } from "lucide-react";
-import { getJobRequisitions, createJobRequisition } from "@/app/actions/requisitions";
+import { getJRSelectionData, createJobRequisition } from "@/app/actions/requisitions";
 import { bulkAddCandidatesToJR, bulkAddByFilterToJR } from "@/app/actions/jr-candidates";
 import { JobRequisition } from "@/types/requisition";
 import { cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ interface Props {
     onOpenChange: (open: boolean) => void;
     candidateIds: string[];
     candidateNames?: string[];
+    candidateSources?: string[]; // New prop for mapping internal/external
     onSuccess?: () => void;
     isSelectAll?: boolean;
     filters?: any;
@@ -57,6 +58,7 @@ export function AddCandidateDialog({
     onOpenChange,
     candidateIds,
     candidateNames,
+    candidateSources,
     onSuccess,
     isSelectAll,
     filters,
@@ -97,38 +99,18 @@ export function AddCandidateDialog({
 
     useEffect(() => {
         if (open) {
-            loadJrs();
-            loadFormOptions();
+            loadInitialData();
         }
     }, [open]);
 
-    async function loadFormOptions() {
-        try {
-            const { getDistinctFieldValues } = await import("@/app/actions/requisitions");
-            const [pos, bus, subs, jrs] = await Promise.all([
-                getDistinctFieldValues('position_jr'),
-                getDistinctFieldValues('bu'),
-                getDistinctFieldValues('sub_bu'),
-                getDistinctFieldValues('jr_id')
-            ]);
-            setFormOptions({
-                positions: pos,
-                divisions: bus,
-                subDivisions: subs,
-                originalJrs: jrs
-            });
-        } catch (e) {
-            console.error("Failed to load options", e);
-        }
-    }
-
-    async function loadJrs() {
+    async function loadInitialData() {
         setLoading(true);
         try {
-            const data = await getJobRequisitions();
-            setJrs(data); // Show all, including inactive
+            const data = await getJRSelectionData();
+            setJrs(data.jrs);
+            setFormOptions(data.options);
         } catch (error) {
-            console.error("Failed to load JRs", error);
+            console.error("Failed to load initial data", error);
         } finally {
             setLoading(false);
         }
@@ -153,26 +135,28 @@ export function AddCandidateDialog({
             });
         };
 
-        const positions = Array.from(new Set(getFiltered('position').map(j => j.title).filter(Boolean))).sort();
-        const bus = Array.from(new Set(getFiltered('bu').map(j => j.division).filter(Boolean))).sort();
-        const depts = Array.from(new Set(getFiltered('dept').map(j => j.department).filter(Boolean))).sort();
-        const statuses = Array.from(new Set(getFiltered('status').map(j => j.status).filter(Boolean))).sort();
+        const positions = Array.from(new Set(getFiltered('position').map(j => j.title).filter(v => v && v.trim() !== ""))).sort();
+        const bus = Array.from(new Set(getFiltered('bu').map(j => j.division).filter(v => v && v.trim() !== ""))).sort();
+        const depts = Array.from(new Set(getFiltered('dept').map(j => j.department).filter(v => v && v.trim() !== ""))).sort();
+        const statuses = Array.from(new Set(getFiltered('status').map(j => j.status).filter(v => v && v.trim() !== ""))).sort();
 
         return { positions, bus, depts, statuses };
     }, [jrs, jrFilters]);
 
-    const filteredJrs = jrs.filter(jr => {
-        const search = searchQuery.toLowerCase();
-        const matchSearch = jr.title.toLowerCase().includes(search) ||
-            jr.id.toLowerCase().includes(search);
+    const filteredJrs = React.useMemo(() => {
+        return jrs.filter(jr => {
+            const search = searchQuery.toLowerCase();
+            const matchSearch = jr.title.toLowerCase().includes(search) ||
+                jr.id.toLowerCase().includes(search);
 
-        const matchPos = jrFilters.position === "All" || jr.title === jrFilters.position;
-        const matchBu = jrFilters.bu === "All" || jr.division === jrFilters.bu;
-        const matchDept = jrFilters.dept === "All" || jr.department === jrFilters.dept;
-        const matchStatus = jrFilters.status === "All" || jr.status === jrFilters.status;
+            const matchPos = jrFilters.position === "All" || jr.title === jrFilters.position;
+            const matchBu = jrFilters.bu === "All" || jr.division === jrFilters.bu;
+            const matchDept = jrFilters.dept === "All" || jr.department === jrFilters.dept;
+            const matchStatus = jrFilters.status === "All" || jr.status === jrFilters.status;
 
-        return matchSearch && matchPos && matchBu && matchDept && matchStatus;
-    });
+            return matchSearch && matchPos && matchBu && matchDept && matchStatus;
+        });
+    }, [jrs, searchQuery, jrFilters]);
 
     async function handleAddExisting() {
         if (!selectedJrId) return;
@@ -184,7 +168,11 @@ export function AddCandidateDialog({
             } else {
                 res = await bulkAddCandidatesToJR(
                     selectedJrId,
-                    candidateIds.map((id, idx) => ({ id, name: candidateNames?.[idx] || id }))
+                    candidateIds.map((id, idx) => ({ 
+                        id, 
+                        name: candidateNames?.[idx] || id,
+                        source: candidateSources?.[idx] || 'internal_db' // Default to internal if not provided
+                    }))
                 ) as BulkAddResponse;
             }
 
@@ -222,7 +210,11 @@ export function AddCandidateDialog({
             // 2. Add Candidate
             const res = await bulkAddCandidatesToJR(
                 createdJr.id,
-                candidateIds.map((id, idx) => ({ id, name: candidateNames?.[idx] || id }))
+                candidateIds.map((id, idx) => ({ 
+                    id, 
+                    name: candidateNames?.[idx] || id,
+                    source: candidateSources?.[idx] || 'internal_db'
+                }))
             );
 
             if (res.success) {
@@ -545,45 +537,37 @@ interface ComboboxProps {
     allowCustom?: boolean;
 }
 
-function CreatableCombobox({ value, onChange, options, placeholder, allowCustom = true }: ComboboxProps) {
+function CreatableCombobox({ value, onChange, options, placeholder }: ComboboxProps) {
     const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState("");
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal h-10 rounded-lg border-slate-200">
-                    {value || placeholder || "Select..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
+                <div className="relative w-full">
+                    <Input
+                        value={value}
+                        onChange={(e) => {
+                            onChange(e.target.value);
+                            if (!open) setOpen(true);
+                        }}
+                        onFocus={() => setOpen(true)}
+                        placeholder={placeholder || "Select or Type..."}
+                        className="w-full pr-10 h-10 rounded-lg border-slate-200"
+                    />
+                    <ChevronsUpDown className="absolute right-3 top-3 h-4 w-4 shrink-0 opacity-50" />
+                </div>
             </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                <Command filter={(value, search) => {
-                    if (value.toLowerCase().includes(search.toLowerCase())) return 1;
-                    return 0;
-                }}>
-                    <CommandInput placeholder="Search or type..." onValueChange={setQuery} />
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                <Command>
                     <CommandList>
-                        <CommandEmpty>
-                            {allowCustom && query.length > 0 ? (
-                                <div
-                                    className="flex items-center gap-2 p-2 text-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded-sm"
-                                    onClick={() => {
-                                        onChange(query);
-                                        setOpen(false);
-                                    }}
-                                >
-                                    <Plus className="h-4 w-4" /> Create &quot;{query}&quot;
-                                </div>
-                            ) : "No results found."}
-                        </CommandEmpty>
+                        <CommandEmpty>No results found.</CommandEmpty>
                         <CommandGroup>
-                            {options.map((option) => (
+                            {options.filter(opt => opt.toLowerCase().includes(value.toLowerCase())).map((option) => (
                                 <CommandItem
                                     key={option}
                                     value={option}
                                     onSelect={(currentValue) => {
-                                        onChange(currentValue === value ? "" : currentValue);
+                                        onChange(currentValue);
                                         setOpen(false);
                                     }}
                                 >

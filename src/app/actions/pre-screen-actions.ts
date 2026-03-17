@@ -1,0 +1,103 @@
+"use server";
+
+import { adminAuthClient } from "@/lib/supabase/admin";
+import { revalidatePath } from "next/cache";
+
+export async function createPreScreenLog(formData: FormData) {
+    const candidateId = formData.get("candidate_id") as string;
+    const screenerName = formData.get("screener_name") as string;
+    const screeningDate = formData.get("screening_date") as string;
+    const feedbackText = formData.get("feedback_text") as string;
+    const ratingScore = formData.get("rating_score") as string;
+    const file = formData.get("file") as File;
+
+    if (!candidateId) return { error: "Missing Candidate ID" };
+    if (!screenerName) return { error: "Missing Screener Name" };
+    if (!screeningDate) return { error: "Missing Screening Date" };
+
+    const client = adminAuthClient as any;
+    let fileUrl = null;
+
+    // 0. Manual ID Increment (Handle lack of auto-increment)
+    const { data: maxIdData } = await client
+        .from("pre_screen_log")
+        .select("pre_screen_id")
+        .order("pre_screen_id", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    
+    const nextId = (maxIdData?.pre_screen_id ? parseInt(maxIdData.pre_screen_id) : 0) + 1;
+
+    // 1. Handle File Upload if exists
+    if (file && file.size > 0) {
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${candidateId}_${Date.now()}.${fileExt}`;
+            const filePath = `${candidateId}/${fileName}`;
+
+            const { data: uploadData, error: uploadError } = await client.storage
+                .from('pre_screen_logs')
+                .upload(filePath, file);
+
+            if (uploadError) {
+                console.error("File Upload Error:", uploadError);
+                // We'll proceed without the file if upload fails, but log it.
+            } else if (uploadData) {
+                const { data: { publicUrl } } = client.storage
+                    .from('pre_screen_logs')
+                    .getPublicUrl(filePath);
+                fileUrl = publicUrl;
+            }
+        } catch (err) {
+            console.error("Error processing file upload:", err);
+        }
+    }
+
+    // 2. Insert into Database
+    const { error } = await client.from("pre_screen_log").insert({
+        pre_screen_id: nextId,
+        candidate_id: candidateId,
+        screener_Name: screenerName, // Table has 'screener_Name' with capital N
+        screening_date: screeningDate,
+        feedback_text: feedbackText || "",
+        rating_score: ratingScore ? parseInt(ratingScore) : null,
+        feedback_file: fileUrl
+    });
+
+    if (error) {
+        console.error("Create Pre-Screen Log Error:", error);
+        return { error: error.message };
+    }
+
+    revalidatePath(`/candidates/${candidateId}`);
+    return { success: true };
+}
+
+export async function deletePreScreenLog(logId: string, candidateId: string) {
+    const client = adminAuthClient as any;
+    
+    // Optional: Delete file from storage if exists
+    const { data: log } = await client.from("pre_screen_log").select("feedback_file").eq("pre_screen_id", logId).single();
+    if (log?.feedback_file) {
+        try {
+            const urlParts = log.feedback_file.split('/');
+            const fileName = urlParts.pop();
+            const folderName = urlParts.pop();
+            await client.storage.from('pre_screen_logs').remove([`${folderName}/${fileName}`]);
+        } catch (e) {
+            console.error("Failed to delete file from storage:", e);
+        }
+    }
+
+    const { error } = await client
+        .from("pre_screen_log")
+        .delete()
+        .eq("pre_screen_id", logId);
+
+    if (error) {
+        return { error: error.message };
+    }
+
+    revalidatePath(`/candidates/${candidateId}`);
+    return { success: true };
+}

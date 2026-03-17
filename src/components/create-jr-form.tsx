@@ -31,45 +31,37 @@ interface ComboboxProps {
     allowCustom?: boolean;
 }
 
-function CreatableCombobox({ value, onChange, options, placeholder, allowCustom = true }: ComboboxProps) {
+function CreatableCombobox({ value, onChange, options, placeholder }: ComboboxProps) {
     const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState("");
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal">
-                    {value || placeholder || "Select..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
+                <div className="relative w-full">
+                    <Input
+                        value={value}
+                        onChange={(e) => {
+                            onChange(e.target.value);
+                            if (!open) setOpen(true);
+                        }}
+                        onFocus={() => setOpen(true)}
+                        placeholder={placeholder || "Select or Type..."}
+                        className="w-full pr-10 h-10 bg-white border-slate-200 focus:ring-primary/20"
+                    />
+                    <ChevronsUpDown className="absolute right-3 top-3 h-4 w-4 shrink-0 opacity-50" />
+                </div>
             </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                <Command filter={(value, search) => {
-                    if (value.toLowerCase().includes(search.toLowerCase())) return 1;
-                    return 0;
-                }}>
-                    <CommandInput placeholder="Search or type..." onValueChange={setQuery} />
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                <Command>
                     <CommandList>
-                        <CommandEmpty>
-                            {allowCustom && query.length > 0 ? (
-                                <div
-                                    className="flex items-center gap-2 p-2 text-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded-sm"
-                                    onClick={() => {
-                                        onChange(query);
-                                        setOpen(false);
-                                    }}
-                                >
-                                    <Plus className="h-4 w-4" /> Create &quot;{query}&quot;
-                                </div>
-                            ) : "No results found."}
-                        </CommandEmpty>
+                        <CommandEmpty>No results found.</CommandEmpty>
                         <CommandGroup>
-                            {options.map((option) => (
+                            {options.filter(opt => opt.toLowerCase().includes(value.toLowerCase())).map((option) => (
                                 <CommandItem
                                     key={option}
                                     value={option}
                                     onSelect={(currentValue) => {
-                                        onChange(currentValue === value ? "" : currentValue);
+                                        onChange(currentValue);
                                         setOpen(false);
                                     }}
                                 >
@@ -134,10 +126,10 @@ export function CreateJobRequisitionForm({ onCancel, onSuccess, initialData, sel
                 ]);
 
                 setOptions({
-                    positions: pos,
-                    divisions: bus,
-                    subDivisions: subs,
-                    originalJrs: jrs
+                    positions: pos.filter((v: string) => v && v.trim() !== ""),
+                    divisions: bus.filter((v: string) => v && v.trim() !== ""),
+                    subDivisions: subs.filter((v: string) => v && v.trim() !== ""),
+                    originalJrs: jrs.filter((v: string) => v && v.trim() !== "")
                 });
 
                 setCurrentUserName(name);
@@ -292,11 +284,11 @@ export function CreateJobRequisitionForm({ onCancel, onSuccess, initialData, sel
                             <SelectValue placeholder="Select Creator" />
                         </SelectTrigger>
                         <SelectContent>
-                            {(profiles || []).map((p, idx) => (
+                            {(profiles || []).filter(p => !!p.real_name && p.real_name.trim() !== "").map((p, idx) => (
                                 <SelectItem key={`${p.email}-${idx}`} value={p.real_name}>{p.real_name}</SelectItem>
                             ))}
-                            {/* Fallback if profiles not loaded yet or empty */}
-                            {(!profiles || profiles.length === 0) && (
+                            {/* Fallback if profiles not loaded or the current name isn't in profiles */}
+                            {(!profiles || profiles.length === 0 || !profiles.some(p => p.real_name === formData.create_by)) && formData.create_by && (
                                 <SelectItem value={formData.create_by}>{formData.create_by}</SelectItem>
                             )}
                         </SelectContent>

@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from 'uuid';
 import { getN8nUrl } from "./admin-actions";
+import { getCheckedStatus } from "@/lib/candidate-utils";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -119,10 +120,23 @@ export async function getSearchResults(sessionId: string) {
             if (source === 'external_db') {
                 const { data: profile } = await supabase
                     .from('ext_candidate_profile')
-                    .select('photo_url')
+                    .select('photo_url, linkedin')
                     .eq('candidate_id', result.candidate_ref_id)
                     .maybeSingle();
-                if (profile) photoUrl = profile.photo_url;
+                if (profile) {
+                    photoUrl = profile.photo_url;
+                    // Check if already onboarded by LinkedIn
+                    if (profile.linkedin) {
+                        const { data: existing } = await supabase
+                            .from('Candidate Profile')
+                            .select('candidate_id')
+                            .eq('linkedin', profile.linkedin)
+                            .maybeSingle();
+                        if (existing) {
+                            return { ...result, photo_url: photoUrl, onboarded_id: existing.candidate_id };
+                        }
+                    }
+                }
             } else if (source === 'internal_db') {
                 // Use 'Candidate Profile' table and 'photo' column as per user instruction & jr-candidates.ts
                 const { data: profile } = await supabase
@@ -337,6 +351,244 @@ export async function getSearchJobStatuses(sessionId: string) {
         return { success: true, data };
     } catch (error: any) {
         console.error("Get Statuses Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// --- 7. Onboard External Candidate ---
+export async function onboardExternalCandidate(extRefId: string, userEmail: string) {
+    try {
+        // 1. Fetch External Data
+        const { data: extProfile, error: profError } = await supabase
+            .from('ext_candidate_profile')
+            .select('*')
+            .eq('candidate_id', extRefId)
+            .single();
+
+        if (profError || !extProfile) throw new Error("External profile not found: " + extRefId);
+
+        // Check if already onboarded by LinkedIn URL to avoid duplicates
+        if (extProfile.linkedin) {
+            const { data: existing } = await supabase
+                .from('Candidate Profile')
+                .select('candidate_id')
+                .eq('linkedin', extProfile.linkedin)
+                .maybeSingle();
+
+            if (existing) {
+                console.log(`Candidate ${extProfile.name} already onboarded as ${existing.candidate_id}`);
+                return { success: true, candidateId: existing.candidate_id, alreadyExisted: true };
+            }
+        }
+
+        const { data: extExperiences } = await supabase
+            .from('ext_candidate_experiences')
+            .select('*')
+            .eq('candidate_id', extRefId);
+
+        const { data: extEnhance } = await supabase
+            .from('ext_profile_enhance')
+            .select('*')
+            .eq('candidate_id', extRefId)
+            .maybeSingle();
+
+        // 2. Reserve Internal candidate_id
+        const { data: idRange, error: rpcError } = await supabase
+            .rpc('reserve_candidate_ids', { batch_size: 1 });
+
+        if (rpcError || !idRange || idRange.length === 0) {
+            throw new Error("Failed to reserve candidate ID: " + rpcError?.message);
+        }
+
+        const numericId = idRange[0].start_id;
+        const internalId = `C${numericId.toString().padStart(5, '0')}`;
+
+        // 3. Create Internal Profile
+        const { error: insertProfError } = await supabase
+            .from('Candidate Profile')
+            .insert({
+                candidate_id: internalId,
+                name: extProfile.name,
+                photo: extProfile.photo_url || null,
+                linkedin: extProfile.linkedin || null,
+                email: extProfile.email || null,
+                mobile_phone: extProfile.mobile_phone || null,
+                checked: getCheckedStatus(extProfile.linkedin),
+                created_by: userEmail,
+                created_date: new Date().toISOString(),
+                modify_date: new Date().toISOString()
+            });
+
+        if (insertProfError) throw insertProfError;
+
+        // 4. Create Internal Experiences
+        if (extExperiences && extExperiences.length > 0) {
+            const internalExps = extExperiences.map(exp => ({
+                candidate_id: internalId,
+                company: exp.company_name_text,
+                position: exp.position,
+                start_date: exp.start_date,
+                end_date: exp.end_date,
+                is_current_job: (exp.is_current === 'true' || exp.is_current === true || exp.is_current === 'True') ? 'Current' : 'Past',
+                work_location: exp.work_location,
+                country: exp.country,
+                company_industry: exp.industry,
+                company_group: exp.group
+            }));
+
+            const { error: insertExpError } = await supabase
+                .from('candidate_experiences')
+                .insert(internalExps);
+
+            if (insertExpError) console.error("Error inserting internal experiences:", insertExpError);
+        }
+
+        // 5. Create Internal Profile Enhance
+        if (extEnhance) {
+            const { error: insertEnhError } = await supabase
+                .from('candidate_profile_enhance')
+                .insert({
+                    candidate_id: internalId,
+                    gap_analysis: extEnhance.gap_analysis,
+                    highlight_project: extEnhance.highlight_project,
+                    vision_strategy: extEnhance.vision_strategy,
+                    inferred_insights: extEnhance.inferred_insights,
+                    executive_summary: extEnhance.executive_summary
+                });
+
+            if (insertEnhError) console.error("Error inserting internal profile enhance:", insertEnhError);
+        }
+
+        return { success: true, candidateId: internalId, alreadyExisted: false };
+    } catch (error: any) {
+        console.error("Onboard External Candidate Error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// --- 8. Bulk Onboard External Candidates ---
+export async function bulkOnboardExternalCandidates(extRefIds: string[], userEmail: string) {
+    try {
+        if (extRefIds.length === 0) return { success: true, onboarded: 0 };
+
+        // 1. Fetch External Data for all
+        const { data: extProfiles, error: profError } = await supabase
+            .from('ext_candidate_profile')
+            .select('*')
+            .in('candidate_id', extRefIds);
+
+        if (profError || !extProfiles) throw new Error("External profiles not found");
+
+        const onboardedResults: { extId: string, internalId: string, alreadyExisted: boolean }[] = [];
+        const toOnboard: any[] = [];
+
+        // 2. Separate already onboarded (by LinkedIn)
+        for (const extProfile of extProfiles) {
+            if (extProfile.linkedin) {
+                const { data: existing } = await supabase
+                    .from('Candidate Profile')
+                    .select('candidate_id')
+                    .eq('linkedin', extProfile.linkedin)
+                    .maybeSingle();
+
+                if (existing) {
+                    onboardedResults.push({ extId: extProfile.candidate_id, internalId: existing.candidate_id, alreadyExisted: true });
+                    continue;
+                }
+            }
+            toOnboard.push(extProfile);
+        }
+
+        if (toOnboard.length === 0) {
+            return { success: true, data: onboardedResults, onboarded: onboardedResults.length };
+        }
+
+        // 3. Reserve IDs in batch
+        const { data: idRange, error: rpcError } = await supabase
+            .rpc('reserve_candidate_ids', { batch_size: toOnboard.length });
+
+        if (rpcError || !idRange || idRange.length === 0) {
+            throw new Error("Failed to reserve candidate IDs: " + rpcError?.message);
+        }
+
+        // Note: rpc returns array of {start_id: X, end_id: Y} - but our RPC returns an array of rows if handled that way?
+        // Actually, looking at fix-candidate-rpc-robust.sql: it returns 'SETOF id_range' which is normally 1 row with start/end.
+        // Wait, let's re-verify the RPC return.
+        // It returns: RETURN NEXT (SELECT min(start_id) FROM batch_ids, max(end_id) FROM batch_ids);
+        // So it's 1 row.
+        const startId = idRange[0].start_id;
+        
+        // 4. Prepare and Insert Profiles
+        const profileInserts = toOnboard.map((profile, index) => {
+            const internalId = `C${(startId + index).toString().padStart(5, '0')}`;
+            onboardedResults.push({ extId: profile.candidate_id, internalId, alreadyExisted: false });
+            return {
+                candidate_id: internalId,
+                name: profile.name,
+                photo: profile.photo_url || null,
+                linkedin: profile.linkedin || null,
+                email: profile.email || null,
+                mobile_phone: profile.mobile_phone || null,
+                checked: getCheckedStatus(profile.linkedin),
+                created_by: userEmail,
+                created_date: new Date().toISOString(),
+                modify_date: new Date().toISOString()
+            };
+        });
+
+        const { error: insertProfError } = await supabase
+            .from('Candidate Profile')
+            .insert(profileInserts);
+
+        if (insertProfError) throw insertProfError;
+
+        // 5. Migrate Experiences and Enhance in backgrounds/sequentially
+        for (const profile of toOnboard) {
+            const result = onboardedResults.find(r => r.extId === profile.candidate_id);
+            if (!result || result.alreadyExisted) continue;
+            
+            const internalId = result.internalId;
+
+            // Fetch Experience and Enhance
+            const [exps, enh] = await Promise.all([
+                supabase.from('ext_candidate_experiences').select('*').eq('candidate_id', profile.candidate_id),
+                supabase.from('ext_profile_enhance').select('*').eq('candidate_id', profile.candidate_id).maybeSingle()
+            ]);
+
+            // Insert Experiences
+            if (exps.data && exps.data.length > 0) {
+                const internalExps = exps.data.map(exp => ({
+                    candidate_id: internalId,
+                    company: exp.company_name_text,
+                    position: exp.position,
+                    start_date: exp.start_date,
+                    end_date: exp.end_date,
+                    is_current_job: (exp.is_current === 'true' || exp.is_current === true || exp.is_current === 'True') ? 'Current' : 'Past',
+                    work_location: exp.work_location,
+                    country: exp.country,
+                    company_industry: exp.industry,
+                    company_group: exp.group
+                }));
+                await supabase.from('candidate_experiences').insert(internalExps);
+            }
+
+            // Insert Enhance
+            if (enh.data) {
+                await supabase.from('candidate_profile_enhance').insert({
+                    candidate_id: internalId,
+                    gap_analysis: enh.data.gap_analysis,
+                    highlight_project: enh.data.highlight_project,
+                    vision_strategy: enh.data.vision_strategy,
+                    inferred_insights: enh.data.inferred_insights,
+                    executive_summary: enh.data.executive_summary
+                });
+            }
+        }
+
+        return { success: true, data: onboardedResults, onboarded: onboardedResults.length };
+
+    } catch (error: any) {
+        console.error("Bulk Onboard Error:", error);
         return { success: false, error: error.message };
     }
 }
