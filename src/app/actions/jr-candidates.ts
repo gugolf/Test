@@ -91,26 +91,43 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
         return rankA - rankB;
     });
 
-    // 2. Fetch Profiles Separately (Application-Side Join)
+    // 2. Fetch Profiles, Experiences, and Status Logs in PARALLEL
+    const jrCandIds = candidates.map(c => c.jr_candidate_id);
     const candidateIds = candidates.map(c => c.candidate_id).filter(Boolean);
-    const { data: profiles } = await (supabase
-        .from('Candidate Profile' as any) // Explicit table name
-        .select('candidate_id, name, email, mobile_phone, job_function, photo, age, gender, candidate_projects, candidate_status')
-        .in('candidate_id', candidateIds) as any);
 
-    const profileMap = new Map((profiles as any)?.map((p: any) => [p.candidate_id, p]));
+    const [profilesResult, experiencesResult, logsResult] = await Promise.all([
+        // Query 2: Candidate Profiles
+        (supabase
+            .from('Candidate Profile' as any)
+            .select('candidate_id, name, email, mobile_phone, job_function, photo, age, gender, candidate_projects, candidate_status')
+            .in('candidate_id', candidateIds) as any),
 
-    // 2.5 Fetch Experiences (to get proper Position & Company)
-    const { data: experiences, error: expError } = await (supabase as any)
-        .from('candidate_experiences')
-        .select('candidate_id, company, position, is_current_job, start_date, country, note')
-        .in('candidate_id', candidateIds);
+        // Query 3: Candidate Experiences
+        (supabase as any)
+            .from('candidate_experiences')
+            .select('candidate_id, company, position, is_current_job, start_date, country, note')
+            .in('candidate_id', candidateIds),
 
-    if (expError) {
-        console.error('[getJRCandidates] candidate_experiences fetch error:', expError);
+        // Query 4: Status Logs
+        supabase
+            .from('status_log')
+            .select('log_id, jr_candidate_id, status, timestamp')
+            .in('jr_candidate_id', jrCandIds)
+            .returns<{ log_id: number; jr_candidate_id: string; status: string; timestamp: string }[]>()
+    ]);
+
+    const profiles = profilesResult.data;
+    const experiences = experiencesResult.data;
+    const logs = logsResult.data;
+
+    if (experiencesResult.error) {
+        console.error('[getJRCandidates] candidate_experiences fetch error:', experiencesResult.error);
     }
 
-    // Build experience map: prefer is_current_job='Current', else take first row (by start_date desc)
+    // Build lookup maps
+    const profileMap = new Map((profiles as any)?.map((p: any) => [p.candidate_id, p]));
+
+    // Build experience map: prefer is_current_job='Current', else most recent by start_date
     const expMap = new Map<string, { company: string; position: string; label: string; country: string; note: string }>();
     if (experiences && (experiences as any[]).length > 0) {
         // Group by candidate_id
@@ -122,7 +139,6 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
         }
 
         for (const [cid, exps] of Object.entries(groupedExp)) {
-            // Sort: Current first, then by start_date desc
             exps.sort((a, b) => {
                 const aIsCurrent = (a.is_current_job || '').toString().trim().toLowerCase() === 'current';
                 const bIsCurrent = (b.is_current_job || '').toString().trim().toLowerCase() === 'current';
@@ -146,21 +162,12 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
         }
     }
 
-    // 3. Fetch Status Logs
-    const jrCandIds = candidates.map(c => c.jr_candidate_id);
-    const { data: logs } = await supabase
-        .from('status_log')
-        .select('log_id, jr_candidate_id, status, timestamp')
-        .in('jr_candidate_id', jrCandIds)
-        .returns<{ log_id: number; jr_candidate_id: string; status: string; timestamp: string }[]>();
-
     return candidates.map((row) => {
         const profile = profileMap.get(row.candidate_id) as any;
         const exp = expMap.get(row.candidate_id);
 
         const realStatus = getLatestStatus(logs || [], row.jr_candidate_id, row.temp_status || "Pool Candidate");
 
-        // Format country: "Thailand(Location from HQ location)"
         const countryDisplay = exp
             ? [exp.country, exp.note ? `(${exp.note})` : ''].filter(Boolean).join('')
             : undefined;
@@ -191,6 +198,7 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
         };
     });
 }
+
 
 export async function getJRAnalytics(jrId: string): Promise<JRAnalytics> {
     const supabase = adminAuthClient;

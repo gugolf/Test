@@ -21,6 +21,10 @@ import { Badge } from "@/components/ui/badge";
 import { JobRequisition } from "@/types/requisition";
 import { getJobRequisitions } from "@/app/actions/requisitions";
 
+// Module-level cache: persists across mounts within the same browser session
+let jrListCache: JobRequisition[] | null = null;
+let jrListFetching: Promise<JobRequisition[]> | null = null;
+
 interface JRSwitcherProps {
     selectedId?: string;
     onSelect: (jr: JobRequisition) => void;
@@ -28,25 +32,37 @@ interface JRSwitcherProps {
 
 export function JRSwitcher({ selectedId, onSelect }: JRSwitcherProps) {
     const [open, setOpen] = useState(false);
-    const [jrs, setJrs] = useState<JobRequisition[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [jrs, setJrs] = useState<JobRequisition[]>(jrListCache ?? []);
+    const [loading, setLoading] = useState(!jrListCache);
 
     useEffect(() => {
-        async function load() {
-            setLoading(true);
-            try {
-                const data = await getJobRequisitions();
-                setJrs(data);
-                if (selectedId) {
-                    const found = data.find(j => j.id === selectedId);
-                    if (found) onSelect(found); // Re-trigger select to ensure parent has full object if needed
-                }
-            } catch (e) {
-                console.error(e);
+        // Already cached — skip fetch, just re-trigger onSelect if needed
+        if (jrListCache) {
+            if (selectedId) {
+                const found = jrListCache.find(j => j.id === selectedId);
+                if (found) onSelect(found);
             }
-            setLoading(false);
+            return;
         }
-        load();
+
+        // Deduplicate: if another mount is already fetching, share the same promise
+        if (!jrListFetching) {
+            jrListFetching = getJobRequisitions();
+        }
+
+        jrListFetching.then(data => {
+            jrListCache = data;
+            jrListFetching = null;
+            setJrs(data);
+            setLoading(false);
+            if (selectedId) {
+                const found = data.find(j => j.id === selectedId);
+                if (found) onSelect(found);
+            }
+        }).catch(e => {
+            console.error(e);
+            setLoading(false);
+        });
     }, []);
 
     const selectedJR = jrs.find((jr) => jr.id === selectedId);
