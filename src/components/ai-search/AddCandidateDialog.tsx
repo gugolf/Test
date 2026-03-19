@@ -181,11 +181,14 @@ export function AddCandidateDialog({
                 const parts = [];
                 if ((res.added ?? 0) > 0) parts.push(`✅ Added ${res.added} candidate(s).`);
                 if ((res.duplicates?.length ?? 0) > 0) parts.push(`⚠️ Skipped ${res.duplicates?.length} duplicate(s).`);
-                if ((res.blacklisted?.length ?? 0) > 0) parts.push(`🚫 Skipped ${res.blacklisted?.length} blacklisted candidate(s).`);
+                if ((res.blacklisted?.length ?? 0) > 0) {
+                    const blNames = res.blacklisted?.join(', ');
+                    parts.push(`🚫 Skipped blacklisted: ${blNames}`);
+                }
 
                 toast.success(`Operation Complete`, {
                     description: parts.join(" "),
-                    duration: 5000
+                    duration: 6000
                 });
                 onOpenChange(false);
                 onSuccess?.();
@@ -218,7 +221,18 @@ export function AddCandidateDialog({
             );
 
             if (res.success) {
-                toast.success(`JR Created and candidates added!`);
+                const parts = [];
+                if ((res.added ?? 0) > 0) parts.push(`✅ Added ${res.added} candidate(s).`);
+                if ((res.duplicates?.length ?? 0) > 0) parts.push(`⚠️ Skipped ${res.duplicates?.length} duplicate(s).`);
+                if ((res.blacklisted?.length ?? 0) > 0) {
+                    const blNames = res.blacklisted?.join(', ');
+                    parts.push(`🚫 Skipped blacklisted: ${blNames}`);
+                }
+
+                toast.success(`JR Created and candidates added!`, {
+                    description: parts.join(" "),
+                    duration: 6000
+                });
                 onOpenChange(false);
                 onSuccess?.();
             } else {

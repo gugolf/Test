@@ -95,7 +95,7 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
     const candidateIds = candidates.map(c => c.candidate_id).filter(Boolean);
     const { data: profiles } = await (supabase
         .from('Candidate Profile' as any) // Explicit table name
-        .select('candidate_id, name, email, mobile_phone, job_function, photo, age, gender, candidate_projects')
+        .select('candidate_id, name, email, mobile_phone, job_function, photo, age, gender, candidate_projects, candidate_status')
         .in('candidate_id', candidateIds) as any);
 
     const profileMap = new Map((profiles as any)?.map((p: any) => [p.candidate_id, p]));
@@ -187,6 +187,7 @@ export async function getJRCandidates(jrId: string): Promise<JRCandidate[]> {
             candidate_image_url: profile?.photo || undefined,
             candidate_age: profile?.age || undefined,
             candidate_gender: profile?.gender || undefined,
+            candidate_status: profile?.candidate_status || undefined,
         };
     });
 }
@@ -306,6 +307,19 @@ export async function addCandidatesToJR(
         const jrCandidatesInsert = [];
         const statusLogsInsert = [];
 
+        // 3a. Check for Blacklist (NEW)
+        const { data: blacklistCheck } = await (supabase
+            .from('Candidate Profile' as any)
+            .select('candidate_id, name, candidate_status')
+            .in('candidate_id', candidateIds)
+            .eq('candidate_status', 'Blacklist') as any);
+        
+        const blacklistedIds = new Set((blacklistCheck as any[])?.map(b => b.candidate_id) || []);
+        if (blacklistedIds.size > 0) {
+            const blNames = (blacklistCheck as any[])?.map(b => b.name || b.candidate_id).join(', ');
+            return { success: false, error: `Cannot add blacklisted candidate(s): ${blNames}` };
+        }
+
         // Date format: M/D/YYYY
         const now = new Date();
         const timestampStr = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
@@ -317,7 +331,7 @@ export async function addCandidatesToJR(
                 jr_candidate_id: jrCandidateId,
                 jr_id: jrId,
                 candidate_id: candidateId,
-                temp_status: null,
+                temp_status: 'Pool Candidate', // Fixed from null to match bulk add
                 list_type: listType,
                 rank: null,
                 time_stamp: new Date().toISOString(),
@@ -386,23 +400,15 @@ export async function bulkAddCandidatesToJR(
 
         // 0. Check for Blacklisted Candidates
         const candidateIdsToCheck = processedCandidates.map(c => c.id);
-        const { data: blacklistData, error: blError } = await supabase
-            .from('Candidate Profile')
-            .select('candidate_id, candidate_status, blacklist_note')
+        const { data: blacklistData, error: blError } = await (supabase
+            .from('Candidate Profile' as any)
+            .select('candidate_id, candidate_status')
             .in('candidate_id', candidateIdsToCheck)
-            .or('candidate_status.eq.Blacklist,blacklist_note.neq.null');
+            .eq('candidate_status', 'Blacklist') as any);
 
         if (blError) throw blError;
 
-        // Final filter in JS to be extra safe with 'EMPTY' strings in blacklist_note
-        const blacklistedIds = new Set(
-            blacklistData
-                ?.filter((b: any) =>
-                    b.candidate_status === 'Blacklist' ||
-                    (b.blacklist_note !== null && b.blacklist_note !== undefined && String(b.blacklist_note).trim() !== '')
-                )
-                .map((b: any) => b.candidate_id)
-        );
+        const blacklistedIds = new Set(blacklistData?.map((b: any) => b.candidate_id));
         const blacklistedNames: string[] = [];
 
         // Filter out blacklisted

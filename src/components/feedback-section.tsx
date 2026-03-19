@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Star, FileText, Plus, Pencil, MoreVertical, Trash2 } from "lucide-react";
+import { MessageSquare, Star, FileText, Plus, Pencil, MoreVertical, Trash2, History as HistoryIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AddFeedbackDialog } from "@/components/add-feedback-dialog";
 import {
@@ -17,6 +17,14 @@ import {
 import { deleteInterviewFeedback } from "@/app/actions/jr-candidate-logs";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import { Maximize2, X } from "lucide-react";
 
 interface FeedbackSectionProps {
     jrCandidateId: string;
@@ -28,6 +36,8 @@ export function FeedbackSection({ jrCandidateId, candidateName, feedback }: Feed
     const router = useRouter();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedFeedback, setSelectedFeedback] = useState<any | null>(null);
+    const [isViewOpen, setIsViewOpen] = useState(false);
+    const [viewingFeedback, setViewingFeedback] = useState<any | null>(null);
 
     const handleAdd = () => {
         setSelectedFeedback(null);
@@ -37,6 +47,11 @@ export function FeedbackSection({ jrCandidateId, candidateName, feedback }: Feed
     const handleEdit = (item: any) => {
         setSelectedFeedback(item);
         setIsDialogOpen(true);
+    };
+
+    const handleView = (item: any) => {
+        setViewingFeedback(item);
+        setIsViewOpen(true);
     };
 
     const handleDelete = async (feedbackId: number) => {
@@ -108,7 +123,7 @@ export function FeedbackSection({ jrCandidateId, candidateName, feedback }: Feed
                                 </DropdownMenu>
                             </div>
 
-                            <CardHeader className="pb-3 border-b border-slate-50">
+                            <CardHeader className="pb-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50/50 transition-colors" onClick={() => handleView(f)}>
                                 <div className="flex justify-between items-start pr-8">
                                     <div className="flex flex-col">
                                         <span className="text-[10px] font-black uppercase text-indigo-500 tracking-wider">
@@ -122,10 +137,19 @@ export function FeedbackSection({ jrCandidateId, candidateName, feedback }: Feed
                                     </div>
                                 </div>
                             </CardHeader>
-                            <CardContent className="pt-4 space-y-3">
-                                <p className="text-[13px] text-slate-600 font-medium leading-relaxed italic line-clamp-4">
-                                    &quot;{f.feedback_text}&quot;
-                                </p>
+                            <CardContent className="pt-4 space-y-3 cursor-pointer" onClick={() => handleView(f)}>
+                                <div className="relative">
+                                    <p className="text-[13px] text-slate-600 font-medium leading-relaxed italic line-clamp-4">
+                                        &quot;{f.feedback_text}&quot;
+                                    </p>
+                                    {f.feedback_text?.length > 150 && (
+                                        <div className="flex justify-end mt-2">
+                                            <span className="text-[10px] font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 bg-indigo-50/50 px-2 py-1 rounded-md border border-indigo-100/50">
+                                                <Maximize2 className="h-3 w-3" /> View Full
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                                 {f.feedback_file && (
                                     <a
                                         href={f.feedback_file}
@@ -162,6 +186,82 @@ export function FeedbackSection({ jrCandidateId, candidateName, feedback }: Feed
                 candidateName={candidateName}
                 initialData={selectedFeedback}
             />
+
+            {/* View Full Feedback Dialog */}
+            <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+                <DialogContent className="max-w-2xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:hidden">
+                    <DialogHeader className="p-8 bg-gradient-to-br from-indigo-600 to-purple-600 text-white relative">
+                        <div className="flex justify-between items-start">
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[10px] font-black uppercase text-indigo-100 tracking-widest pl-0.5">
+                                    {viewingFeedback?.Interviewer_type || "Interview Feedback"}
+                                </span>
+                                <DialogTitle className="text-2xl font-black">{viewingFeedback?.Interviewer_name}</DialogTitle>
+                            </div>
+                            <div className="bg-white/20 backdrop-blur-md text-white rounded-2xl px-3 py-1.5 flex items-center gap-2 border border-white/20">
+                                <Star className="h-4 w-4 fill-white" />
+                                <span className="text-lg font-black">{viewingFeedback?.rating_score || "-"}</span>
+                            </div>
+                        </div>
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="absolute top-4 right-4 text-white hover:bg-white/20 rounded-full"
+                            onClick={() => setIsViewOpen(false)}
+                        >
+                            <X className="h-5 w-5" />
+                        </Button>
+                    </DialogHeader>
+                    
+                    <div className="p-8 space-y-6 bg-white">
+                        <div className="flex justify-between items-center py-3 px-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                            <div className="flex items-center gap-2">
+                                <HistoryIcon className="h-4 w-4 text-indigo-400" />
+                                <span>{viewingFeedback?.interview_date}</span>
+                            </div>
+                            <Badge className={cn(
+                                "font-black tracking-widest px-3 py-1",
+                                ['Strong Recommend', 'Hire', 'Recommend', 'Strongly Recommend'].includes(viewingFeedback?.overall_recommendation)
+                                    ? 'bg-green-50 text-green-700 border-green-100'
+                                    : viewingFeedback?.overall_recommendation === 'Hold'
+                                        ? 'bg-yellow-50 text-yellow-700 border-yellow-100'
+                                        : 'bg-red-50 text-red-700 border-red-100'
+                            )}>
+                                {viewingFeedback?.overall_recommendation}
+                            </Badge>
+                        </div>
+
+                        <div className="relative">
+                            <MessageSquare className="absolute -top-4 -left-4 h-12 w-12 text-slate-50 opacity-50" />
+                            <p className="text-base text-slate-700 font-medium leading-relaxed italic relative z-10 whitespace-pre-wrap">
+                                &quot;{viewingFeedback?.feedback_text}&quot;
+                            </p>
+                        </div>
+
+                        {viewingFeedback?.feedback_file && (
+                            <a
+                                href={viewingFeedback.feedback_file}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-3 text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline bg-indigo-50 w-full p-4 rounded-xl transition-colors border border-indigo-100 mt-4"
+                            >
+                                <FileText className="h-5 w-5" /> 
+                                <span className="flex-1">View Full Detailed Document / Attachment</span>
+                                <Plus className="h-4 w-4 rotate-45" />
+                            </a>
+                        )}
+                    </div>
+                    
+                    <DialogFooter className="p-4 bg-slate-50 border-t border-slate-100 sm:justify-center">
+                        <Button 
+                            onClick={() => setIsViewOpen(false)}
+                            className="w-full sm:w-32 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl"
+                        >
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

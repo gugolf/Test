@@ -505,6 +505,7 @@ export function CandidateList({ jrId, jobTitle, bu, subBu, updatedBy }: Candidat
                             <th className="text-left font-black text-slate-500 text-xs uppercase tracking-widest px-5 py-4 w-[65px]">P</th>
                             <th className="text-left font-black text-slate-500 text-xs uppercase tracking-widest px-5 py-4 w-[120px]">ID</th>
                             <th className="text-left font-black text-slate-500 text-xs uppercase tracking-widest px-5 py-4 w-[280px]">Candidate Details</th>
+                            <th className="text-left font-black text-slate-500 text-xs uppercase tracking-widest px-5 py-4 w-[160px]">Status</th>
                             <th className="text-left font-black text-slate-500 text-xs uppercase tracking-widest px-5 py-4 w-[120px]">Sex/Age</th>
                             <th className="text-left font-black text-slate-500 text-xs uppercase tracking-widest px-5 py-4 w-[200px]">Company</th>
                             <th className="text-left font-black text-slate-500 text-xs uppercase tracking-widest px-5 py-4 w-[200px]">Position</th>
@@ -694,6 +695,20 @@ export function CandidateList({ jrId, jobTitle, bu, subBu, updatedBy }: Candidat
                                                 {c.candidate_email || "No email recorded"}
                                             </span>
                                         </div>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        {c.candidate_status ? (
+                                            <Badge variant="secondary" className={cn(
+                                                "text-[10px] font-black uppercase tracking-wider border whitespace-nowrap px-2.5 py-1 rounded-lg shadow-sm",
+                                                c.candidate_status === 'Active' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                                c.candidate_status === 'Blacklist' ? "bg-rose-50 text-rose-600 border-rose-100" :
+                                                "bg-slate-50 text-slate-500 border-slate-200"
+                                            )}>
+                                                {c.candidate_status}
+                                            </Badge>
+                                        ) : (
+                                            <span className="text-slate-300 text-xs">—</span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-4">
                                         <div className="inline-flex items-center gap-2 font-black text-sm text-slate-700 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 whitespace-nowrap">
