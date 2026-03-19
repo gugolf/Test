@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-import { BackButton, EditButton, AddPrescreenDialog, EditPrescreenDialog, DeleteCandidateDialog, DeletePrescreenButton } from "@/components/candidate-client-actions";
+import { BackButton, EditButton, AddPrescreenDialog, EditPrescreenDialog, DeleteCandidateDialog, DeletePrescreenButton, RefreshProfileButton } from "@/components/candidate-client-actions";
 import { AddExperienceDialog, DeleteExperienceButton, SetCurrentExperienceButton, EditExperienceDialog } from "@/components/experience-dialog";
 import { formatMonthYear, parseAnyDate } from "@/lib/date-utils";
 import { JobStatusDetailDialog } from "@/components/job-status-dialog";
@@ -168,10 +168,6 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                             />
                             <EditButton id={candidate.candidate_id} />
                         </div>
-                        {/* Delete Button */}
-                        <div className="pt-2">
-                            <DeleteCandidateDialog id={candidate.candidate_id} name={candidate.name} />
-                        </div>
                     </div>
                 </div>
             </div>
@@ -307,24 +303,23 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                         </Card>
                     )}
 
-                    {/* Delete Zone */}
+                    {/* Danger Zone */}
                     <Card className="border border-destructive/20 shadow-none bg-destructive/5">
                         <CardContent className="p-4 flex flex-col gap-2">
                             <h4 className="font-semibold text-destructive text-sm flex items-center gap-2">
                                 <AlertCircle className="h-4 w-4" /> Danger Zone
                             </h4>
-                            <p className="text-xs text-muted-foreground">Permanently remove this candidate and all history.</p>
-                            {/* We need to import DeleteCandidateDialog properly. I'll simulate it being available or add import logic in next step if it fails. */}
-                            {/* Assuming it's imported from candidate-client-actions */}
-                            <div className="mt-2">
-                                {/* Note: I need to update the IMPORTS at the top of this file to include DeleteCandidateDialog. Assuming user will verify or I do it in next tool call. */}
-                                {/* Wait, I can't leave broken code. I will use a placeholder Button if component not imported? 
-                                    I'll trust my plan to update imports or I should have done it in one go.
-                                    Actually I can't import it because I just wrote it in the previous tool execution but this file doesn't have the import line.
-                                    I MUST update the import line at the top of this file too.
-                                */}
-                                {/* I'll add the import in the proper 'replace_file_content' call or subsequent content */}
-                            </div>
+                            <p className="text-xs text-muted-foreground mb-2">Actions that affect this candidate's data.</p>
+
+                            {/* Refresh Profile */}
+                            <RefreshProfileButton
+                                candidateId={candidate.candidate_id}
+                                candidateName={candidate.name}
+                                linkedinUrl={candidate.linkedin}
+                            />
+
+                            {/* Delete Candidate */}
+                            <DeleteCandidateDialog id={candidate.candidate_id} name={candidate.name} />
                         </CardContent>
                     </Card>
                 </div>

@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Plus, Download, FileText, Trash2, Pencil } from "lucide-react";
+import { ChevronLeft, Plus, Download, FileText, Trash2, Pencil, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { triggerCandidateRefresh } from "@/app/actions/n8n-actions";
 import {
     Dialog,
     DialogContent,
@@ -332,5 +333,44 @@ export function DeleteCandidateDialog({ id, name }: { id: string, name: string }
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+export function RefreshProfileButton({ candidateId, candidateName, linkedinUrl }: { candidateId: string, candidateName: string, linkedinUrl?: string }) {
+    const [loading, setLoading] = useState(false);
+
+    const handleRefresh = async () => {
+        setLoading(true);
+        toast.promise(
+            triggerCandidateRefresh(
+                [{ id: candidateId, name: candidateName, linkedin: linkedinUrl || "" }],
+                "Candidate Profile (Manual Refresh)"
+            ),
+            {
+                loading: `Sending ${candidateName} to n8n for refresh...`,
+                success: (data: any) => {
+                    setLoading(false);
+                    if (data.success) return `Refresh triggered for ${candidateName}!`;
+                    throw new Error(data.error);
+                },
+                error: (err) => {
+                    setLoading(false);
+                    return `Failed to refresh: ${err.message}`;
+                }
+            }
+        );
+    };
+
+    return (
+        <Button
+            variant="outline"
+            size="sm"
+            className="w-full border-amber-200 text-amber-700 hover:bg-amber-50 hover:border-amber-300 gap-2 font-bold"
+            onClick={handleRefresh}
+            disabled={loading}
+        >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? "Refreshing..." : "Refresh Profile"}
+        </Button>
     );
 }

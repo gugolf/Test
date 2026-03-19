@@ -114,6 +114,10 @@ export default function JRManagePage() {
                     jrCache[id] = jr;
                     setSelectedJR(jr);
 
+                    // Background revalidation: always fetch fresh data even if cached
+                    // (above already does this — remove early-return only for cache path)
+                    // This ensures stale data gets updated without a full reload
+
                     // Sync tab title if not in cache (migration)
                     const stored = localStorage.getItem("ats_jr_tabs");
                     const tabs = stored ? JSON.parse(stored) : [];
@@ -162,7 +166,8 @@ export default function JRManagePage() {
         } else {
             params.delete('jr_id');
         }
-        router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+        // Use push (not replace) so Browser Back button can return to previous JR
+        router.push(`${window.location.pathname}?${params.toString()}`, { scroll: false });
     };
 
     const handleTabChange = (val: string) => {

@@ -56,6 +56,7 @@ import Link from "next/link";
 import { AddFeedbackDialog } from "@/components/add-feedback-dialog";
 import { CandidateAvatar } from "@/components/candidate-avatar";
 import { StatusChangeDialog } from "@/components/status-change-dialog";
+import { JRCandidateSheet } from "@/components/jr-candidate-sheet";
 
 interface CandidateListProps {
     jrId: string;
@@ -88,6 +89,10 @@ export function CandidateList({ jrId, jobTitle, bu, subBu, updatedBy }: Candidat
     const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
     const [feedbackCandidate, setFeedbackCandidate] = useState<{ id: string, name: string } | null>(null);
     const [placementCandidate, setPlacementCandidate] = useState<{ id: string, name: string } | null>(null);
+
+    // Sheet (Activity & Logs) State
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
+    const [sheetCandidateId, setSheetCandidateId] = useState<string | null>(null);
 
     // Status Dialog State
     const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -538,11 +543,15 @@ export function CandidateList({ jrId, jobTitle, bu, subBu, updatedBy }: Candidat
                                             <DropdownMenuContent align="start" className="w-[200px] rounded-xl shadow-2xl border-slate-100">
                                                 <DropdownMenuLabel className="text-[9px] font-black uppercase text-slate-400 tracking-widest px-3 py-2">Quick Actions</DropdownMenuLabel>
 
-                                                <Link href={`/requisitions/manage/candidate/${c.id}`}>
-                                                    <DropdownMenuItem className="py-2.5 font-bold text-xs cursor-pointer rounded-lg mx-1 group">
-                                                        <History className="mr-2 h-4 w-4 text-indigo-500 group-hover:scale-110 transition-transform" /> Full Activity & Logs
-                                                    </DropdownMenuItem>
-                                                </Link>
+                                                <DropdownMenuItem
+                                                    className="py-2.5 font-bold text-xs cursor-pointer rounded-lg mx-1 group"
+                                                    onClick={() => {
+                                                        setSheetCandidateId(c.id);
+                                                        setIsSheetOpen(true);
+                                                    }}
+                                                >
+                                                    <History className="mr-2 h-4 w-4 text-indigo-500 group-hover:scale-110 transition-transform" /> Full Activity & Logs
+                                                </DropdownMenuItem>
 
                                                 <Link href={`/candidates/${c.candidate_id}`}>
                                                     <DropdownMenuItem className="py-2.5 font-bold text-xs cursor-pointer rounded-lg mx-1 group">
@@ -807,6 +816,16 @@ export function CandidateList({ jrId, jobTitle, bu, subBu, updatedBy }: Candidat
                 onOpenChange={setStatusDialogOpen}
                 targetStatus={pendingStatus}
                 onConfirm={confirmStatusChange}
+            />
+
+            {/* Slide-over Sheet: Activity Log & Feedback */}
+            <JRCandidateSheet
+                jrCandidateId={sheetCandidateId}
+                open={isSheetOpen}
+                onOpenChange={(open) => {
+                    setIsSheetOpen(open);
+                    if (!open) setSheetCandidateId(null);
+                }}
             />
         </Card>
     );
