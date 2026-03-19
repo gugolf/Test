@@ -25,7 +25,8 @@ import { ReportViewDialog } from "@/components/report-view-dialog";
 import { triggerReport } from "@/app/actions/n8n-actions";
 import { CopyJRDialog } from "@/components/copy-jr-dialog";
 import { toast } from "sonner";
-import { deleteJobRequisition, getUserProfiles } from "@/app/actions/requisitions";
+import { deleteJobRequisition, getUserProfiles, getRequisition } from "@/app/actions/requisitions";
+import { getJRAnalytics } from "@/app/actions/jr-candidates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { User } from "lucide-react";
 import {
@@ -39,6 +40,10 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+// Module-level cache for instant "Back" navigation
+const jrCache: Record<string, JobRequisition> = {};
+const analyticsCache: Record<string, any> = {};
+
 export default function JRManagePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -48,11 +53,12 @@ export default function JRManagePage() {
     const [currentTab, setCurrentTab] = useState(initialTab);
 
     // Selected JR State
-    // Selected JR State
     const [selectedJR, setSelectedJR] = useState<JobRequisition | null>(null);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isAddCandOpen, setIsAddCandOpen] = useState(false);
     const [analytics, setAnalytics] = useState<any>(null);
+    const [isJRLoading, setIsJRLoading] = useState(false); // Track URL-based loading
+    const [isInitialized, setIsInitialized] = useState(false); // Track initial mount
     const [refreshKey, setRefreshKey] = useState(0); // Trigger refresh for candidates
     const [isReportViewOpen, setIsReportViewOpen] = useState(false);
     const [isTriggeringReport, setIsTriggeringReport] = useState(false);
@@ -63,7 +69,10 @@ export default function JRManagePage() {
 
     // Audit State
     const [profiles, setProfiles] = useState<{ email: string; real_name: string }[]>([]);
-    const [selectedCreatedBy, setSelectedCreatedBy] = useState<string>("");
+    const [selectedCreatedBy, setSelectedCreatedBy] = useState("All Users");
+
+    // No longer adding tabs in a side effect of selectedJR to avoid loops.
+    // Instead, it's handled inside the loadSelectedJR function when identity is confirmed.
 
     // Load Profiles and Auth User
     useEffect(() => {
@@ -84,70 +93,98 @@ export default function JRManagePage() {
         loadAuditData();
     }, []);
 
-    // Sync URL with Tab
-    const handleTabChange = (val: string) => {
-        setCurrentTab(val);
-    };
-
-    // Update Tabs in LocalStorage when JR is Selected
-    useEffect(() => {
-        if (selectedJR) {
-            try {
-                const stored = localStorage.getItem("ats_jr_tabs");
-                const tabs = stored ? JSON.parse(stored) : [];
-
-                // Add if not exists
-                if (!tabs.find((t: any) => t.id === selectedJR.id)) {
-                    tabs.push({ id: selectedJR.id, title: selectedJR.title || selectedJR.id });
-                    localStorage.setItem("ats_jr_tabs", JSON.stringify(tabs));
-                    // Force update tabs component is tricky without context, 
-                    // ideally JRTabs should listen to storage or we pass tabs as prop.
-                    // For simplicity, we'll reload window or use a callback if we had one.
-                    // Actually, passing 'key' to JRTabs might force re-render if we change it.
-                    window.dispatchEvent(new Event("storage")); // Custom event to sync?
-                }
-            } catch (e) {
-                console.error(e);
-            }
-        }
-    }, [selectedJR]);
-
-
-
-    // Handle create tab selection (if coming from history/url in future)
-    // Handle url/history
+    // Handle URL/History Sync
     useEffect(() => {
         const jrId = searchParams.get('jr_id');
+        
+        const loadSelectedJR = async (id: string) => {
+            // If already loaded, skip
+            if (selectedJR?.id === id) return;
+
+            // Check cache for instant feel
+            if (jrCache[id]) {
+                setSelectedJR(jrCache[id]);
+            } else {
+                setIsJRLoading(true);
+            }
+
+            try {
+                const jr = await getRequisition(id);
+                if (jr) {
+                    jrCache[id] = jr;
+                    setSelectedJR(jr);
+
+                    // Sync tab title if not in cache (migration)
+                    const stored = localStorage.getItem("ats_jr_tabs");
+                    const tabs = stored ? JSON.parse(stored) : [];
+                    const existingIndex = tabs.findIndex((t: any) => t.id === jr.id);
+                    const desiredTitle = `${jr.id} — ${jr.job_title}`;
+                    
+                    if (existingIndex === -1) {
+                        tabs.push({ id: jr.id, title: desiredTitle });
+                        localStorage.setItem("ats_jr_tabs", JSON.stringify(tabs));
+                        window.dispatchEvent(new Event("storage"));
+                    } else if (tabs[existingIndex].title !== desiredTitle) {
+                        tabs[existingIndex].title = desiredTitle;
+                        localStorage.setItem("ats_jr_tabs", JSON.stringify(tabs));
+                        window.dispatchEvent(new Event("storage"));
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load JR from URL", e);
+            } finally {
+                setIsJRLoading(false);
+            }
+        };
+
         if (jrId) {
-            handleTabSelect(jrId);
+            loadSelectedJR(jrId);
+        } else {
+            setSelectedJR(null);
+            setIsJRLoading(false);
         }
+
+        // Initialize flag (though not strictly needed now in URL-first)
+        if (!isInitialized) setIsInitialized(true);
+    }, [searchParams, isInitialized]); // Only listen to URL changes
+
+    // Update currentTab when searchParams change
+    useEffect(() => {
+        const tab = searchParams.get('tab') || "list";
+        if (tab !== currentTab) setCurrentTab(tab);
     }, [searchParams]);
 
-    const handleTabSelect = (id: string) => {
-        if (id === 'new') {
-            setSelectedJR(null); // Show empty state for selection
-            return;
+    // Selection Handlers (These now only update URL)
+    const handleJRSelect = (id: string | null) => {
+        const params = new URLSearchParams(window.location.search);
+        if (id) {
+            params.set('jr_id', id);
+        } else {
+            params.delete('jr_id');
         }
+        router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
+    };
 
-        if (!id) {
-            setSelectedJR(null);
-            return;
-        }
-
-        // Fetch full JR (Reuse verify logic or simple fetch)
-        import("@/app/actions/requisitions").then(async ({ getRequisition }) => {
-            const jr = await getRequisition(id);
-            if (jr) setSelectedJR(jr);
-        });
+    const handleTabChange = (val: string) => {
+        const params = new URLSearchParams(window.location.search);
+        params.set('tab', val);
+        router.replace(`${window.location.pathname}?${params.toString()}`, { scroll: false });
     };
 
     // ... Load Analytics (Existing) ...
     useEffect(() => {
         async function loadAnalytics() {
             if (selectedJR) {
+                const id = selectedJR.id;
+                
+                // Show cached analytics if available
+                if (analyticsCache[id]) {
+                    setAnalytics(analyticsCache[id]);
+                }
+
                 try {
-                    const { getJRAnalytics } = await import("@/app/actions/jr-candidates");
-                    const data = await getJRAnalytics(selectedJR.id);
+                    const data = await getJRAnalytics(id);
+                    analyticsCache[id] = data; // Update cache
                     setAnalytics(data);
                 } catch (e) {
                     console.error("Failed to load analytics", e);
@@ -157,7 +194,7 @@ export default function JRManagePage() {
             }
         }
         loadAnalytics();
-    }, [selectedJR]);
+    }, [selectedJR?.id]);
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
@@ -181,9 +218,9 @@ export default function JRManagePage() {
             {/* Top Tabs Bar */}
             <JRTabs
                 activeId={selectedJR ? selectedJR.id : undefined}
-                onSelect={handleTabSelect}
+                onSelect={handleJRSelect}
                 onAdd={() => {
-                    setSelectedJR(null); // Just clear selection to show switcher "workspace"
+                    handleJRSelect(null); // Just clear selection to show switcher "workspace"
                 }}
             />
 
@@ -215,10 +252,17 @@ export default function JRManagePage() {
                             </div>
                         </div>
                         <div className="flex gap-4 items-center">
-                            <JRSwitcher
-                                selectedId={selectedJR?.id}
-                                onSelect={setSelectedJR}
-                            />
+                            {isJRLoading ? (
+                                <div className="flex items-center gap-2 px-4 h-12 bg-white rounded-lg border shadow-sm">
+                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                    <span className="text-sm font-black text-indigo-700 italic">Returning you to {searchParams.get('jr_id')}...</span>
+                                </div>
+                            ) : (
+                                <JRSwitcher
+                                    selectedId={selectedJR?.id}
+                                    onSelect={(jr) => handleJRSelect(jr.id)}
+                                />
+                            )}
                             {selectedJR && (
                                 <div className="flex gap-2 text-sm text-slate-500">
                                     <span className={selectedJR.is_active ? 'text-green-600 font-medium' : 'text-slate-400'}>
@@ -352,7 +396,15 @@ export default function JRManagePage() {
 
                 {/* Main Content Area */}
                 {
-                    selectedJR ? (
+                    isJRLoading ? (
+                        <div className="flex flex-col items-center justify-center h-[500px] bg-slate-50/30 dark:bg-slate-900/30 rounded-2xl border-2 border-dashed border-indigo-100 dark:border-indigo-900 animate-pulse transition-all">
+                            <div className="p-4 rounded-full bg-indigo-50 dark:bg-indigo-900/50 mb-4">
+                                <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+                            </div>
+                            <h3 className="text-xl font-black text-indigo-900 dark:text-indigo-100">Preparing Workspace</h3>
+                            <p className="text-slate-500 dark:text-slate-400 italic max-w-xs text-center mt-2">Connecting to secure database and fetching the latest candidates for {searchParams.get('jr_id')}...</p>
+                        </div>
+                    ) : selectedJR ? (
                         <div className="space-y-6">
                             {/* ANALYTICS SECTION */}
                             {analytics && (
@@ -489,7 +541,7 @@ export default function JRManagePage() {
                         sourceJR={selectedJR}
                         updatedBy={selectedCreatedBy}
                         onSuccess={(newId) => {
-                            handleTabSelect(newId); // Select the new JR automatically
+                            handleJRSelect(newId); // Select the new JR automatically
                         }}
                     />
                 )

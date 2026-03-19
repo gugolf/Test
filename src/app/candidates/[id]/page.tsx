@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-import { BackButton, EditButton, AddPrescreenDialog, DeleteCandidateDialog, DeletePrescreenButton } from "@/components/candidate-client-actions";
+import { BackButton, EditButton, AddPrescreenDialog, EditPrescreenDialog, DeleteCandidateDialog, DeletePrescreenButton } from "@/components/candidate-client-actions";
 import { AddExperienceDialog, DeleteExperienceButton, SetCurrentExperienceButton, EditExperienceDialog } from "@/components/experience-dialog";
 import { formatMonthYear, parseAnyDate } from "@/lib/date-utils";
 import { JobStatusDetailDialog } from "@/components/job-status-dialog";
@@ -59,6 +59,18 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         };
         fetchCandidate();
     }, [id]);
+
+    React.useEffect(() => {
+        if (!loading && typeof window !== "undefined" && window.location.hash) {
+            const hashId = window.location.hash.slice(1);
+            const element = document.getElementById(hashId);
+            if (element) {
+                setTimeout(() => {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+            }
+        }
+    }, [loading]);
 
     if (loading) return <div className="p-8 text-center">Loading candidate profile...</div>;
     if (error) return <div className="p-8 text-center text-red-500">Error: {error}</div>;
@@ -555,7 +567,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                     </Card>
 
                     {/* Pre-Screen Logs (Enhanced) */}
-                    <Card className="border shadow-sm bg-card">
+                    <Card id="pre-screen-logs" className="border shadow-sm bg-card">
                         <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20">
                             <CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /> Pre-Screen Logs</CardTitle>
                             <AddPrescreenDialog candidateId={candidate.candidate_id} />
@@ -564,41 +576,11 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                             {candidate.prescreenLogs && candidate.prescreenLogs.length > 0 ? (
                                 <div className="grid gap-4">
                                     {candidate.prescreenLogs.map((log: any, i: number) => (
-                                        <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow">
-                                            <div className="flex items-start justify-between mb-3">
-                                                <div className="flex items-center gap-2">
-                                                    <Avatar className="h-8 w-8 ring-1 ring-border">
-                                                        <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">
-                                                            {log.screener_name ? log.screener_name.substring(0, 2).toUpperCase() : "SC"}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-sm font-bold text-foreground">{log.screener_Name || "Unknown Screener"}</p>
-                                                            {log.rating_score && (
-                                                                <Badge className={log.rating_score >= 8 ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-secondary text-secondary-foreground"}>
-                                                                    Score: {log.rating_score}/10
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground">{log.screening_date ? formatDateForDisplay(log.screening_date) : "No Date"}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {log.feedback_file && (
-                                                        <a href={log.feedback_file} target="_blank" rel="noopener noreferrer">
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary">
-                                                                <Download className="h-3.5 w-3.5" />
-                                                            </Button>
-                                                        </a>
-                                                    )}
-                                                    <DeletePrescreenButton logId={log.pre_screen_id} candidateId={candidate.candidate_id} />
-                                                </div>
-                                            </div>
-                                            <div className="text-sm text-foreground/80 whitespace-pre-wrap p-3 bg-muted/20 rounded-md border border-border/30">
-                                                {log.feedback_text || "No feedback recorded."}
-                                            </div>
-                                        </div>
+                                        <PrescreenLogEntry 
+                                            key={log.pre_screen_id || i} 
+                                            log={log} 
+                                            candidateId={candidate.candidate_id} 
+                                        />
                                     ))}
                                 </div>
                             ) : (
@@ -629,3 +611,59 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         </div>
     );
 }
+
+function PrescreenLogEntry({ log, candidateId }: { log: any, candidateId: string }) {
+    const [expanded, setExpanded] = React.useState(false);
+    const isLongText = log.feedback_text?.length > 300;
+
+    return (
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <p className="text-sm font-bold text-foreground">{log.screener_Name || "Unknown Screener"}</p>
+                            {log.rating_score && (
+                                <Badge className={log.rating_score >= 8 ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-secondary text-secondary-foreground"}>
+                                    Score: {log.rating_score}/10
+                                </Badge>
+                            )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{log.screening_date ? formatDateForDisplay(log.screening_date) : "No Date"}</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    {log.feedback_file && (
+                        <a href={log.feedback_file} target="_blank" rel="noopener noreferrer">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary">
+                                <FileText className="h-3.5 w-3.5" />
+                            </Button>
+                        </a>
+                    )}
+                    <EditPrescreenDialog candidateId={candidateId} log={log} />
+                    <DeletePrescreenButton logId={log.pre_screen_id} candidateId={candidateId} />
+                </div>
+            </div>
+            <div className={cn(
+                "text-sm text-foreground/80 whitespace-pre-wrap p-3 bg-muted/20 rounded-md border border-border/30 relative",
+                !expanded && isLongText && "max-h-[120px] overflow-hidden"
+            )}>
+                {log.feedback_text || "No feedback recorded."}
+                {!expanded && isLongText && (
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-muted/50 to-transparent pointer-events-none" />
+                )}
+            </div>
+            {isLongText && (
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="mt-2 text-[10px] h-6 font-bold text-indigo-500 hover:text-indigo-600 p-0"
+                    onClick={() => setExpanded(!expanded)}
+                >
+                    {expanded ? "Show Less" : "View More"}
+                </Button>
+            )}
+        </div>
+    );
+}
+

@@ -71,7 +71,7 @@ export function JRTabs({ activeId, onSelect, onAdd }: JRTabsProps) {
                     key={tab.id}
                     onClick={() => onSelect(tab.id)}
                     className={`
-                        group flex items-center gap-2 px-3 py-1.5 min-w-[120px] max-w-[200px] text-xs font-medium rounded-t-lg cursor-pointer border-t border-x
+                        group flex items-center gap-2 px-3 py-1.5 min-w-[150px] max-w-[300px] text-xs font-medium rounded-t-lg cursor-pointer border-t border-x
                         ${tab.id === activeId || (activeId === undefined && tabs.length === 0)
                             ? "bg-white dark:bg-black border-slate-200 dark:border-slate-800 text-foreground"
                             : "bg-slate-200 dark:bg-slate-800 border-transparent text-muted-foreground hover:bg-slate-300 dark:hover:bg-slate-700"}

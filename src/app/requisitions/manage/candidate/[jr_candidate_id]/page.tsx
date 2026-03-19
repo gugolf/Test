@@ -26,8 +26,8 @@ export default async function CandidateLogPage({ params }: { params: Promise<{ j
             {/* Header */}
             <header className="sticky top-0 z-40 w-full border-b bg-white/95 backdrop-blur-md shadow-sm">
                 <div className="flex h-24 items-center px-8 gap-8 max-w-[95%] mx-auto w-full">
-                    <Link href="/requisitions/manage">
-                        <Button variant="ghost" size="sm" className="gap-2 text-slate-500 hover:text-slate-900">
+                    <Link href={`/requisitions/manage${meta.jr_id ? `?jr_id=${meta.jr_id}` : ''}`}>
+                        <Button variant="ghost" size="sm" className="gap-2 text-slate-500 hover:text-slate-900 font-bold">
                             <ArrowLeft className="h-4 w-4" /> Back to JR
                         </Button>
                     </Link>

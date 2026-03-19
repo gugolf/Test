@@ -101,3 +101,60 @@ export async function deletePreScreenLog(logId: string, candidateId: string) {
     revalidatePath(`/candidates/${candidateId}`);
     return { success: true };
 }
+export async function updatePreScreenLog(formData: FormData) {
+    const logId = formData.get("log_id") as string;
+    const candidateId = formData.get("candidate_id") as string;
+    const screenerName = formData.get("screener_name") as string;
+    const screeningDate = formData.get("screening_date") as string;
+    const feedbackText = formData.get("feedback_text") as string;
+    const ratingScore = formData.get("rating_score") as string;
+    const file = formData.get("file") as File;
+
+    if (!logId) return { error: "Missing Log ID" };
+    if (!candidateId) return { error: "Missing Candidate ID" };
+
+    const client = adminAuthClient as any;
+    let fileUrl = formData.get("existing_file_url") as string || null;
+
+    // 1. Handle File Upload if a new file is provided
+    if (file && file.size > 0) {
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${candidateId}_${Date.now()}.${fileExt}`;
+            const filePath = `${candidateId}/${fileName}`;
+
+            const { data: uploadData, error: uploadError } = await client.storage
+                .from('pre_screen_logs')
+                .upload(filePath, file);
+
+            if (!uploadError && uploadData) {
+                const { data: { publicUrl } } = client.storage
+                    .from('pre_screen_logs')
+                    .getPublicUrl(filePath);
+                fileUrl = publicUrl;
+            }
+        } catch (err) {
+            console.error("Error processing file upload:", err);
+        }
+    }
+
+    // 2. Update Database
+    const { error } = await client
+        .from("pre_screen_log")
+        .update({
+            screener_Name: screenerName,
+            screening_date: screeningDate,
+            feedback_text: feedbackText || "",
+            rating_score: ratingScore ? parseInt(ratingScore) : null,
+            feedback_file: fileUrl
+        })
+        .eq("pre_screen_id", logId);
+
+    if (error) {
+        console.error("Update Pre-Screen Log Error:", error);
+        return { error: error.message };
+    }
+
+    revalidatePath(`/candidates/${candidateId}`);
+    return { success: true };
+}
