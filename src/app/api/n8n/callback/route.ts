@@ -173,14 +173,15 @@ export async function POST(req: NextRequest) {
         // 4. Insert Experiences
         const experienceList = Experience || [];
 
-        // Helper to handle dates (Preserve MM-YYYY, fallback to ISO for full dates)
+        // Helper to handle dates (Preserve MM-YYYY, 'Present', fallback to ISO for full dates)
         const parseDateHelper = (dateStr: string | null) => {
             if (!dateStr || typeof dateStr !== 'string') return null;
-            if (dateStr.toLowerCase() === 'present') return null;
-
+            
             const trimmed = dateStr.trim();
-            // If already in MM-YYYY or YYYY, keep it raw!
-            if (/^\d{2}[-/]\d{4}$/.test(trimmed) || /^\d{4}$/.test(trimmed) || /^[a-zA-Z]+ \d{4}$/.test(trimmed)) {
+            if (trimmed.toLowerCase() === 'present') return 'Present';
+
+            // If already in MM-YYYY (08-2024) or YYYY, keep it raw!
+            if (/^\d{1,2}[-/]\d{4}$/.test(trimmed) || /^\d{4}$/.test(trimmed) || /^[a-zA-Z]+ \d{4}$/.test(trimmed)) {
                 return trimmed;
             }
 
