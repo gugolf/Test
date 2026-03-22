@@ -173,17 +173,23 @@ export async function POST(req: NextRequest) {
         // 4. Insert Experiences
         const experienceList = Experience || [];
 
-        // Helper to convert DD/MM/YYYY or MM-YYYY to YYYY-MM-DD
+        // Helper to handle dates (Preserve MM-YYYY, fallback to ISO for full dates)
         const parseDateHelper = (dateStr: string | null) => {
             if (!dateStr || typeof dateStr !== 'string') return null;
             if (dateStr.toLowerCase() === 'present') return null;
 
-            const parsed = parseAnyDate(dateStr);
+            const trimmed = dateStr.trim();
+            // If already in MM-YYYY or YYYY, keep it raw!
+            if (/^\d{2}[-/]\d{4}$/.test(trimmed) || /^\d{4}$/.test(trimmed) || /^[a-zA-Z]+ \d{4}$/.test(trimmed)) {
+                return trimmed;
+            }
+
+            const parsed = parseAnyDate(trimmed);
             if (parsed && !isNaN(parsed.getTime())) {
                 return parsed.toISOString().split('T')[0];
             }
 
-            return null; // Invalid date
+            return trimmed; // Invalid or unparseable, just save as raw string
         };
 
         if (Array.isArray(experienceList) && experienceList.length > 0) {

@@ -18,10 +18,10 @@ export async function createUploadRecord(record: UploadRecord) {
         // 1. Check for duplicate file name
         const { data: existing } = await supabase
             .from('resume_uploads')
-            .select('id, status')
+            .select('id, status, candidate_id')
             .eq('file_name', record.file_name)
             .neq('status', 'Error')
-            .single();
+            .maybeSingle();
 
         if (existing) {
             console.log(`Duplicate file upload attempt: ${record.file_name}`);
@@ -212,3 +212,41 @@ export async function handleDuplicateResume(
     }
 }
 
+export async function checkDuplicateFiles(fileNames: string[]) {
+    if (!fileNames || fileNames.length === 0) return { success: true, data: [] };
+    
+    try {
+        const { data, error } = await supabase
+            .from('resume_uploads')
+            .select('id, file_name, status, candidate_id')
+            .in('file_name', fileNames)
+            .neq('status', 'Error');
+
+        if (error) throw error;
+        return { success: true, data: data || [] };
+    } catch (err: any) {
+        console.error("Error checking bulk duplicates:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+export async function logSkippedResume(fileName: string, uploaderEmail: string) {
+    try {
+        const { error } = await supabase
+            .from('resume_uploads')
+            .insert({
+                file_name: fileName,
+                resume_url: null, // No URL since skipped before upload
+                uploader_email: uploaderEmail,
+                status: 'Duplicate (Skipped)',
+                note: `User chose to skip this duplicate file.`,
+                created_at: new Date().toISOString()
+            });
+            
+        if (error) throw error;
+        return { success: true };
+    } catch (err: any) {
+        console.error("Error logging skipped resume:", err);
+        return { success: false, error: err.message };
+    }
+}

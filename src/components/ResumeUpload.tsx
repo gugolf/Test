@@ -6,9 +6,10 @@ import { useDropzone } from "react-dropzone"; // Assuming installed or need to i
 // Let's check package.json from memory (Step 126). 
 // I didn't verify 'react-dropzone' in package.json. 
 // I will use a simple native drag-and-drop implementation to avoid dependency issues unless I check package.json again.
-import { Upload, FileText, X, Check, AlertCircle, Loader2 } from "lucide-react";
+import { Upload, FileText, X, Check, AlertCircle, Loader2, PauseCircle } from "lucide-react";
 import { createClient } from "@supabase/supabase-js"; // Client side supabase
 import { cn } from "@/lib/utils";
+import { checkDuplicateFiles } from "@/app/actions/resume-actions";
 
 // Initialize Supabase Client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -17,17 +18,18 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface ResumeUploadProps {
     onUploadComplete: (files: UploadedFile[]) => void;
+    onDuplicatesDetected?: (duplicates: { file: File, existingRecord: any }[]) => void;
 }
 
 export interface UploadedFile {
     file: File;
-    status: 'pending' | 'uploading' | 'success' | 'error';
+    status: 'pending' | 'uploading' | 'success' | 'error' | 'duplicate_waiting';
     url?: string;
     error?: string;
     dbId?: string; // ID from resume_uploads table
 }
 
-export function ResumeUpload({ onUploadComplete }: ResumeUploadProps) {
+export function ResumeUpload({ onUploadComplete, onDuplicatesDetected }: ResumeUploadProps) {
     const [files, setFiles] = useState<UploadedFile[]>([]);
     const [isDragging, setIsDragging] = useState(false);
 
@@ -75,12 +77,6 @@ export function ResumeUpload({ onUploadComplete }: ResumeUploadProps) {
     };
 
     const uploadFiles = async (newFiles: UploadedFile[]) => {
-        // Upload logic here -> Storage
-        // Passing result to parent to save to DB? 
-        // Or loop here.
-
-        const updatedFiles = [...newFiles];
-
         // This is a local state update helper
         const updateFileStatus = (fileName: string, status: UploadedFile['status'], url?: string, error?: string) => {
             setFiles(prev => prev.map(f =>
@@ -88,9 +84,39 @@ export function ResumeUpload({ onUploadComplete }: ResumeUploadProps) {
             ));
         };
 
-        for (const f of newFiles) {
-            updateFileStatus(f.file.name, 'uploading');
+        // 1. Check for duplicates BEFORE S3 upload
+        const fileNames = newFiles.map(f => f.file.name);
+        for (const name of fileNames) updateFileStatus(name, 'uploading'); // Generic loading state while checking
 
+        const { success, data: existingRecords, error: checkError } = await checkDuplicateFiles(fileNames);
+        
+        if (!success) {
+            console.error("Duplicate check failed:", checkError);
+            // Fallback: Proceed with uploading all if check fails (or mark as err)
+        }
+
+        const existingMap = new Map(existingRecords?.map(r => [r.file_name, r]));
+        
+        const duplicateFiles: { file: File, existingRecord: any }[] = [];
+        const uniqueFiles: UploadedFile[] = [];
+
+        newFiles.forEach(f => {
+            const existing = existingMap.get(f.file.name);
+            if (existing) {
+                duplicateFiles.push({ file: f.file, existingRecord: existing });
+                updateFileStatus(f.file.name, 'duplicate_waiting');
+            } else {
+                uniqueFiles.push(f);
+            }
+        });
+
+        // 2. Emit duplicates directly to parent to handle the popup
+        if (duplicateFiles.length > 0 && onDuplicatesDetected) {
+            onDuplicatesDetected(duplicateFiles);
+        }
+
+        // 3. Proceed to upload only unique files to S3
+        for (const f of uniqueFiles) {
             try {
                 const fileName = `${Date.now()}_${f.file.name.replace(/\s+/g, '_')}`; // Sanitize name
                 const { data, error } = await supabase.storage
@@ -107,8 +133,6 @@ export function ResumeUpload({ onUploadComplete }: ResumeUploadProps) {
                 updateFileStatus(f.file.name, 'success', publicUrlData.publicUrl);
 
                 // Notify parent that ONE file is done (so it can save to DB incremental)
-                // OR wait for all. 
-                // Better to notify incremental so user sees progress in DB log list.
                 onUploadComplete([{
                     file: f.file,
                     status: 'success',
@@ -182,7 +206,9 @@ export function ResumeUpload({ onUploadComplete }: ResumeUploadProps) {
                             <div className="flex items-center gap-2">
                                 {file.status === 'uploading' && <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />}
                                 {file.status === 'success' && <Check className="w-5 h-5 text-green-500" />}
-                                {file.status === 'error' && <AlertCircle className="w-5 h-5 text-red-500" />}
+                                <div title="Waiting for duplicate decision">
+                                    {file.status === 'duplicate_waiting' && <PauseCircle className="w-5 h-5 text-amber-500" />}
+                                </div>
                             </div>
                         </div>
                     ))}

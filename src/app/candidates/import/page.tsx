@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Papa from "papaparse";
 import { processCsvUpload } from "@/app/actions/csv-actions";
-import { createUploadRecord, handleDuplicateResume } from "@/app/actions/resume-actions";
+import { createUploadRecord, handleDuplicateResume, logSkippedResume } from "@/app/actions/resume-actions";
 import { bulkAddCandidatesToJR } from "@/app/actions/jr-candidates";
 import { AddCandidateDialog } from "@/components/ai-search/AddCandidateDialog";
 import { getStatuses } from "@/app/actions/candidate-filters";
@@ -57,6 +57,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -84,6 +85,7 @@ export default function CandidateImportPage() {
     const router = useRouter();
     const [viewMode, setViewMode] = useState<'csv' | 'resume'>('resume');
     const [uploading, setUploading] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
     const [logs, setLogs] = useState<UploadLog[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -335,7 +337,23 @@ export default function CandidateImportPage() {
             setUploading(false);
         }
     };
+    // Handle Duplicate Upload Dialog Queue
+    const [duplicateQueue, setDuplicateQueue] = useState<any[]>([]);
+    const [applyToAll, setApplyToAll] = useState(false);
+    
+    // Derived state for the current duplicate being processed
+    const currentDuplicate = duplicateQueue.length > 0 ? duplicateQueue[0] : null;
 
+    useEffect(() => {
+        if (duplicateQueue.length > 0) {
+            setOpenDuplicateDialog(true);
+        } else {
+            setOpenDuplicateDialog(false);
+            setApplyToAll(false);
+        }
+    }, [duplicateQueue]);
+
+    // -- File Drop Handlers --
     const handleResumeUploadComplete = async (files: UploadedFile[]) => {
         // Filter only success files
         const successFiles = files.filter(f => f.status === 'success' && f.url);
@@ -349,53 +367,88 @@ export default function CandidateImportPage() {
             });
 
             if (!res.success) {
-                if ((res as any).isDuplicate) {
-                    setDuplicateData({
-                        existingRecord: (res as any).existingRecord,
-                        newResumeUrl: f.url!,
-                        fileName: f.file.name
-                    });
-                    setOpenDuplicateDialog(true);
-                    // We stop the loop for now to handle the prompt? 
-                    // Actually, if multiple duplicates, this will only show the last one if we don't wait.
-                    // For now, let's assume it's one by one or we might need a queue.
-                    // User usually uploads few at a time.
-                } else {
-                    toast.error(`Failed to save record for ${f.file.name}`);
-                }
+                toast.error(`Failed to save record for ${f.file.name}`);
             }
         }
 
-        // Refresh logs to see new pending items
         fetchLogs();
     };
 
-    const handleDuplicateChoice = async (choice: 'update' | 'attach' | 'no-action') => {
-        if (!duplicateData) return;
-        
-        setProcessingDuplicate(true);
-        try {
-            const res = await handleDuplicateResume(
+    const handleDuplicatesDetected = (duplicates: { file: File, existingRecord: any }[]) => {
+        const queueItems = duplicates.map(d => ({
+            file: d.file,
+            existingRecord: d.existingRecord,
+            fileName: d.file.name
+        }));
+        setDuplicateQueue(prev => [...prev, ...queueItems]);
+    };
+
+    const processSingleDuplicate = async (choice: 'update' | 'attach' | 'no-action', dup: any) => {
+        if (choice === 'no-action') {
+            return await logSkippedResume(dup.fileName, userEmail || 'unknown');
+        } else {
+            // Must upload to S3 first since it was paused
+            const supabase = createClient();
+            const fileNameToUpload = `${Date.now()}_${dup.file.name.replace(/\s+/g, '_')}`;
+            const { error: uploadErr } = await supabase.storage.from('resumes').upload(fileNameToUpload, dup.file);
+            if (uploadErr) return { success: false, error: "Cloud storage upload failed: " + uploadErr.message };
+
+            const { data } = supabase.storage.from('resumes').getPublicUrl(fileNameToUpload);
+            
+            return await handleDuplicateResume(
                 choice,
-                duplicateData.existingRecord,
-                duplicateData.newResumeUrl,
+                dup.existingRecord,
+                data.publicUrl,
                 userEmail || 'unknown'
             );
+        }
+    };
 
-            if (res.success) {
-                toast.success(res.message || "Action completed");
-                setOpenDuplicateDialog(false);
-                setDuplicateData(null);
-                fetchLogs();
+    const handleDuplicateChoice = async (choice: 'update' | 'attach' | 'no-action') => {
+        if (!currentDuplicate) return;
+        setProcessingDuplicate(true);
+        
+        try {
+            if (applyToAll) {
+                // Process entire queue
+                let successCount = 0;
+                for (const dup of duplicateQueue) {
+                    const res = await processSingleDuplicate(choice, dup);
+                    if (res.success) successCount++;
+                }
+                toast.success(`Action '${choice}' applied to ${successCount} duplicate files.`);
+                setDuplicateQueue([]); // Clear queue
             } else {
-                toast.error(res.error || "Failed to process choice");
+                // Process just the current one
+                const res = await processSingleDuplicate(choice, currentDuplicate);
+
+                if (res.success) {
+                    toast.success((res as any).message || "Action completed for " + currentDuplicate.fileName);
+                } else {
+                    toast.error(res.error || "Failed to process choice for " + currentDuplicate.fileName);
+                }
+                setDuplicateQueue(prev => prev.slice(1));
             }
         } catch (error) {
             console.error(error);
-            toast.error("Something went wrong");
+            toast.error("Something went wrong processing duplicates");
+            setDuplicateQueue(prev => prev.slice(1));
         } finally {
             setProcessingDuplicate(false);
+            fetchLogs();
         }
+    };
+
+    const handleDuplicateDialogChange = (open: boolean) => {
+        if (!open) {
+            // If user explicitly closes the dialog without action (clicks outside or X)
+            // We assume they want to "Skip" the remaining duplicates to clear the UI queue
+            if (duplicateQueue.length > 0) {
+                toast.info(`Skipped remaining ${duplicateQueue.length} duplicate(s)`);
+                setDuplicateQueue([]);
+            }
+        }
+        setOpenDuplicateDialog(open);
     };
 
     // --- JR Selection Logic ---
@@ -472,39 +525,83 @@ export default function CandidateImportPage() {
             <ArrowUpDown className="ml-1 h-3 w-3 text-indigo-600" />;
     };
 
-    const downloadCsv = () => {
-        const headers = [
-            'Candidate ID', 'Name', 'File Name', 'LinkedIn',
-            'Status', 'Candidate Status', 'Note',
-            'Uploader Email', 'Batch ID', 'Created At', 'Resume URL'
-        ];
-        const rows = sortedLogs.map(log => [
-            log.candidate_id || '',
-            log.name || '',
-            log.file_name || '',
-            log.linkedin || '',
-            log.status || '',
-            log.candidate_status || '',
-            (log.note || '').replace(/,/g, ';').replace(/\n/g, ' '),
-            log.uploader_email || '',
-            log.batch_id || '',
-            log.created_at || '',
-            log.resume_url || ''
-        ]);
-        const csvContent = [headers, ...rows]
-            .map(row => row.map(cell => `"${cell}"`).join(','))
-            .join('\n');
-        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `upload-log-${viewMode}-${new Date().toISOString().slice(0, 10)}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+    const downloadCsv = async () => {
+        setIsDownloading(true);
+        try {
+            const supabase = createClient();
+            let query = supabase
+                .from(viewMode === 'csv' ? 'csv_upload_logs' : 'resume_uploads')
+                .select('*');
+
+            // Apply current filters to get ALL matching records, not just the current page
+            if (searchTerm) {
+                const search = `%${searchTerm}%`;
+                if (viewMode === 'csv') {
+                    query = query.or(`name.ilike.${search},note.ilike.${search},candidate_id.ilike.${search}`);
+                } else {
+                    query = query.or(`file_name.ilike.${search},note.ilike.${search},candidate_id.ilike.${search}`);
+                }
+            }
+
+            if (statusFilter !== 'all') {
+                query = query.eq('status', statusFilter);
+            }
+            if (userFilter !== 'all') {
+                query = query.eq('uploader_email', userFilter);
+            }
+
+            const { data, error } = await query.order('created_at', { ascending: false });
+            
+            if (error) throw error;
+            
+            const logsToDownload = data || [];
+            
+            if (logsToDownload.length === 0) {
+                toast.error("No records found to download");
+                return;
+            }
+
+            const headers = [
+                'Candidate ID', 'Name', 'File Name', 'LinkedIn',
+                'Status', 'Candidate Status', 'Note',
+                'Uploader Email', 'Batch ID', 'Created At', 'Resume URL'
+            ];
+            
+            const rows = logsToDownload.map(log => [
+                log.candidate_id || '',
+                log.name || '',
+                log.file_name || '',
+                log.linkedin || '',
+                log.status || '',
+                log.candidate_status || '',
+                (log.note || '').replace(/,/g, ';').replace(/\n/g, ' '),
+                log.uploader_email || '',
+                log.batch_id || '',
+                log.created_at || '',
+                log.resume_url || ''
+            ]);
+            
+            const csvContent = [headers, ...rows]
+                .map(row => row.map(cell => `"${cell}"`).join(','))
+                .join('\n');
+                
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `upload-log-${viewMode}-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Error generating CSV:", error);
+            toast.error("Failed to generate CSV");
+        } finally {
+            setIsDownloading(false);
+        }
     };
 
     return (
-        <div className="container mx-auto p-6 space-y-6 max-w-7xl h-full flex flex-col">
+        <div className="container mx-auto p-6 space-y-6 max-w-7xl">
             <div className="flex flex-col gap-2">
                 <AtsBreadcrumb
                     items={[
@@ -548,25 +645,33 @@ export default function CandidateImportPage() {
                             </Button>
                         )}
 
-                        {/* Resume Dialog */}
-                        <Dialog open={openResumeDialog} onOpenChange={setOpenResumeDialog}>
-                            <DialogTrigger asChild>
+                        {/* Resume Sheet */}
+                        <Sheet open={openResumeDialog} onOpenChange={setOpenResumeDialog}>
+                            <SheetTrigger asChild>
                                 <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200">
                                     <FileText className="mr-2 h-4 w-4" /> Import Resumes (PDF)
                                 </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-xl">
-                                <DialogHeader>
-                                    <DialogTitle>Bulk Resume Upload</DialogTitle>
-                                    <DialogDescription>
+                            </SheetTrigger>
+                            <SheetContent className="sm:max-w-xl w-full flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+                                <SheetHeader className="p-6 shrink-0 bg-slate-900 text-left">
+                                    <SheetTitle className="text-xl font-bold flex items-center gap-2 text-white">
+                                        <FileText className="w-5 h-5 text-blue-400" />
+                                        Bulk Resume Upload
+                                    </SheetTitle>
+                                    <SheetDescription className="text-slate-400">
                                         Upload multiple PDF resumes. The AI will process them in the background.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className="py-4 space-y-4">
-                                    <ResumeUpload onUploadComplete={handleResumeUploadComplete} />
+                                    </SheetDescription>
+                                </SheetHeader>
+                                <div className="p-6 flex-1 min-h-0 overflow-y-auto space-y-4 bg-slate-50/50">
+                                    <ResumeUpload onUploadComplete={handleResumeUploadComplete} onDuplicatesDetected={handleDuplicatesDetected} />
                                 </div>
-                            </DialogContent>
-                        </Dialog>
+                                <div className="p-6 shrink-0 bg-slate-50 border-t flex items-center justify-end">
+                                    <Button variant="outline" onClick={() => setOpenResumeDialog(false)} className="rounded-xl font-bold text-slate-500 hover:bg-slate-200">
+                                        Close Window
+                                    </Button>
+                                </div>
+                            </SheetContent>
+                        </Sheet>
 
                         {/* Manual Add Dialog */}
                         <Dialog open={openManualDialog} onOpenChange={setOpenManualDialog}>
@@ -676,7 +781,7 @@ export default function CandidateImportPage() {
                 </div>
             </div>
 
-            <Card className="border-none shadow-xl bg-white/50 backdrop-blur-sm flex-1 flex flex-col overflow-hidden">
+            <Card className="border-none shadow-xl bg-white/50 backdrop-blur-sm">
                 <CardHeader className="bg-slate-50/50 border-b border-slate-100/50 flex flex-col gap-4 pb-4">
                     <div className="flex flex-row items-center justify-between">
                         <div className="flex items-center gap-4">
@@ -691,8 +796,8 @@ export default function CandidateImportPage() {
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Button variant="outline" size="sm" onClick={downloadCsv} disabled={sortedLogs.length === 0} className="gap-2 text-slate-600">
-                                <Download className="w-4 h-4" /> Download CSV
+                            <Button variant="outline" size="sm" onClick={downloadCsv} disabled={totalLogs === 0 || isDownloading} className="gap-2 text-slate-600">
+                                {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Download CSV
                             </Button>
                             <Button variant="ghost" size="sm" onClick={fetchLogs} disabled={loadingLogs}>
                                 <RefreshCw className={cn("w-4 h-4", loadingLogs && "animate-spin")} />
@@ -734,7 +839,7 @@ export default function CandidateImportPage() {
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent className="p-0 flex-1 overflow-auto">
+                <CardContent className="p-0">
                     {loadingLogs ? (
                         <div className="h-[400px] flex flex-col items-center justify-center gap-4 text-slate-400">
                             <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -830,54 +935,72 @@ export default function CandidateImportPage() {
                 }}
             />
 
-            {/* Duplicate Resume Dialog */}
-            <Dialog open={openDuplicateDialog} onOpenChange={setOpenDuplicateDialog}>
+            {/* Duplicate Handling Dialog */}
+            <Dialog open={openDuplicateDialog} onOpenChange={handleDuplicateDialogChange}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <AlertCircle className="w-5 h-5 text-amber-500" /> Duplicate Resume Detected
+                        <DialogTitle className="flex items-center gap-2 text-amber-600">
+                            <AlertCircle className="w-5 h-5" />
+                            Duplicate Resume Detected
                         </DialogTitle>
-                        <DialogDescription>
-                            File <strong>{duplicateData?.fileName}</strong> has already been uploaded. 
-                            {duplicateData?.existingRecord?.candidate_id && (
-                                <span> Linked to candidate <strong>{duplicateData.existingRecord.candidate_id}</strong>.</span>
-                            )}
-                            What would you like to do?
+                        <DialogDescription className="text-slate-600 mt-2">
+                            File <span className="font-semibold text-slate-900">{currentDuplicate?.fileName || 'Unknown file'}</span> has already been uploaded.
+                            <br />What would you like to do?
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="grid grid-cols-1 gap-3 py-4">
-                        <Button 
-                            variant="outline" 
-                            className="justify-start h-auto p-4 flex flex-col items-start gap-1 hover:bg-indigo-50 hover:border-indigo-200"
+
+                    <div className="flex flex-col gap-3 py-4">
+                        <Button
+                            variant="outline"
+                            className="justify-start h-auto py-3 px-4 border-indigo-200 hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
                             onClick={() => handleDuplicateChoice('update')}
                             disabled={processingDuplicate}
                         >
-                            <span className="font-bold flex items-center gap-2">
-                                <RefreshCw className={cn("w-4 h-4", processingDuplicate && "animate-spin")} /> Update Information
-                            </span>
-                            <span className="text-xs text-slate-500">Re-trigger AI to parse and overwrite existing data.</span>
+                            <div className="flex flex-col items-start text-left">
+                                <span className="font-semibold text-indigo-700 flex items-center gap-2">
+                                    <RefreshCw className={cn("w-4 h-4", processingDuplicate && "animate-spin")} />
+                                    Update Information
+                                </span>
+                                <span className="text-xs text-slate-500 mt-1">Re-trigger AI to parse and overwrite existing data.</span>
+                            </div>
                         </Button>
 
-                        <Button 
-                            variant="outline" 
-                            className="justify-start h-auto p-4 flex flex-col items-start gap-1 hover:bg-emerald-50 hover:border-emerald-200"
+                        <Button
+                            variant="outline"
+                            className="justify-start h-auto py-3 px-4 border-slate-200 hover:bg-slate-50 transition-colors"
                             onClick={() => handleDuplicateChoice('attach')}
-                            disabled={processingDuplicate || !duplicateData?.existingRecord?.candidate_id}
+                            disabled={processingDuplicate}
                         >
-                            <span className="font-bold flex items-center gap-2">
-                                <PlusCircle className="w-4 h-4" /> Attach Resume Only
-                            </span>
-                            <span className="text-xs text-slate-500">Keep existing data but update the resume file link.</span>
+                            <div className="flex flex-col items-start text-left">
+                                <span className="font-semibold text-slate-700 flex items-center gap-2">
+                                    <PlusCircle className="w-4 h-4" />
+                                    Attach Resume Only
+                                </span>
+                                <span className="text-xs text-slate-500 mt-1">Keep existing data but update the resume file link.</span>
+                            </div>
                         </Button>
 
-                        <Button 
-                            variant="ghost" 
-                            className="justify-center"
+                        <Button
+                            variant="ghost"
+                            className="justify-center mt-2 text-slate-600 hover:bg-slate-100"
                             onClick={() => handleDuplicateChoice('no-action')}
                             disabled={processingDuplicate}
                         >
                             No Action (Skip)
                         </Button>
+                        
+                        {duplicateQueue.length > 1 && (
+                            <div className="mt-4 flex items-center justify-center gap-2 pt-4 border-t border-slate-100">
+                                <Checkbox 
+                                    id="apply-to-all" 
+                                    checked={applyToAll} 
+                                    onCheckedChange={(c) => setApplyToAll(!!c)} 
+                                />
+                                <Label htmlFor="apply-to-all" className="text-sm cursor-pointer font-medium text-slate-600">
+                                    Apply this choice to the remaining <span className="font-bold text-amber-600">{duplicateQueue.length - 1}</span> duplicate(s)
+                                </Label>
+                            </div>
+                        )}
                     </div>
                 </DialogContent>
             </Dialog>
