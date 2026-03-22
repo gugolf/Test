@@ -66,6 +66,15 @@ const WEBHOOK_DOCS: Record<string, {
         response: `{ answer: "คำตอบจาก AI" }`,
         note: "🔜 Coming Soon — ระบบนี้ยังอยู่ระหว่างพัฒนา",
     },
+    "OrgChart Workflow": {
+        trigger: "ถูกเรียกเมื่อมีการอัปโหลดรูปภาพแผนผังองค์กรสำเร็จ",
+        payload: `POST  {
+  upload_id: string,
+  company_master: string,
+  image_filename: string (Public URL)
+}`,
+        response: `{ success: true }  (n8n processes and writes results to all_org_nodes table)`,
+    },
 };
 
 export default function N8nAdminPage() {
